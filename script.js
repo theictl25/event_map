@@ -1,4 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
+const isBoothsPage = document.body.classList.contains("booths-page");
 const SVG_NS = "http://www.w3.org/2000/svg";
 const desktopQuery = matchMedia("(min-width: 1100px)");
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -69,7 +70,7 @@ const booths = [];
 const boothElements = new Map();
 
 const state = {
-  selected: "A12",
+  selected: "",
   query: "",
   category: "all",
   zone: "all",
@@ -622,22 +623,36 @@ function animateTo(x, y, scale) {
 
 function fitMap() {
   stopAnimation();
+
+  if (!viewport.clientWidth || !viewport.clientHeight) {
+    return;
+  }
+
   state.minScale =
     Math.min(viewport.clientWidth / 800, viewport.clientHeight / 900) * 0.95;
 
   state.maxScale = state.minScale * 5;
   state.scale = state.minScale;
+
   state.x = (viewport.clientWidth - 800 * state.scale) / 2;
+
   state.y = (viewport.clientHeight - 900 * state.scale) / 2;
+
   paint();
 }
 
 function centerBooth(booth) {
+  if (!viewport.clientWidth || !viewport.clientHeight) {
+    return;
+  }
+
   const scale = clamp(state.minScale * 2.2, state.minScale, state.maxScale);
 
   animateTo(
     viewport.clientWidth / 2 - (booth.x + booth.width / 2) * scale,
+
     viewport.clientHeight / 2 - (booth.y + booth.height / 2) * scale,
+
     scale,
   );
 }
@@ -882,6 +897,16 @@ function routeFromEntrance(booth, entranceX) {
 }
 
 function showDirections() {
+  if (isBoothsPage) {
+    const url = new URL("./index.html", location.href);
+
+    url.hash = state.selected;
+    url.searchParams.set("directions", "1");
+
+    location.assign(url.href);
+    return;
+  }
+
   const booth = boothById.get(state.selected);
   const routes = [routeFromEntrance(booth, 255), routeFromEntrance(booth, 545)];
 
@@ -971,26 +996,30 @@ async function shareBooth() {
 
 // Navigation
 
+// ล้างตัวกรองรายการ
 $("#view-all").addEventListener("click", resetFilters);
 
-$("#nav-booths").addEventListener("click", () => {
-  resetFilters();
-  $("#directory").scrollIntoView({
-    behavior: reducedMotion.matches ? "auto" : "smooth",
-    block: "start",
-  });
-});
-
-$("#nav-map").addEventListener("click", () => {
-  $("#map-section").scrollIntoView({
-    behavior: reducedMotion.matches ? "auto" : "smooth",
-    block: "start",
-  });
-  viewport.focus({ preventScroll: true });
-});
+// Map และ All Booths ใช้ href ใน HTML เปลี่ยนหน้าโดยตรง
+// ไม่ต้องผูก click เพื่อ scrollIntoView อีก
 
 $("#nav-info").addEventListener("click", () => {
   $("#info-dialog").showModal();
+});
+
+// แสดงสถานะเมนูให้ตรงกับหน้าปัจจุบัน
+const activeNavId = isBoothsPage ? "nav-booths" : "nav-map";
+
+["nav-map", "nav-booths"].forEach((id) => {
+  const link = document.getElementById(id);
+  const active = id === activeNavId;
+
+  link.classList.toggle("current", active);
+
+  if (active) {
+    link.setAttribute("aria-current", "page");
+  } else {
+    link.removeAttribute("aria-current");
+  }
 });
 
 window.addEventListener("hashchange", () => {
@@ -1005,7 +1034,24 @@ applyFilters();
 fitMap();
 
 const initialId = location.hash.slice(1).toUpperCase();
-selectBooth(boothById.has(initialId) ? initialId : "A12");
+selectBooth(boothById.has(initialId));
+// selectBooth(boothById.has(initialId) ? initialId : "A12");
 
 $("#footer").textContent =
   `EventMap · ${booths.length} booth locations · Demo event directory`;
+
+// เปิดเส้นทางเมื่อมาจากหน้า All Booths
+const pageUrl = new URL(location.href);
+
+if (!isBoothsPage && pageUrl.searchParams.get("directions") === "1") {
+  showDirections();
+
+  // ลบคำสั่งออกจาก URL หลังใช้งานแล้ว
+  pageUrl.searchParams.delete("directions");
+
+  try {
+    history.replaceState(null, "", pageUrl.href);
+  } catch {
+    // บางเบราว์เซอร์จำกัด History API เมื่อเปิดไฟล์ในเครื่อง
+  }
+}
