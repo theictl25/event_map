@@ -3,71 +3,20 @@ const isBoothsPage = document.body.classList.contains("booths-page");
 const SVG_NS = "http://www.w3.org/2000/svg";
 const desktopQuery = matchMedia("(min-width: 1100px)");
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const GOOGLE_SHEET_API =
+  "https://script.google.com/macros/s/AKfycbwouLK9bHHELMFXHuZtLUfXGawipv318_TAsZMPjiMtfC1hXlSAjXw4flbwpYDEBe2P/exec";
+
+let featuredShops = {};
+const booths = [];
+const boothElements = new Map();
+let boothById = new Map();
 
 const zones = {
   A: { background: "#ffebee", border: "#ffbac4", text: "#a32847" },
   B: { background: "#fff5cc", border: "#f6d963", text: "#946126" },
   C: { background: "#eaf7ed", border: "#bce9c7", text: "#137658" },
   D: { background: "#e1f2ff", border: "#a7dcff", text: "#07628e" },
-  //   E: { background: "#f2eaff", border: "#dbc5fa", text: "#79509f" },
 };
-
-// Replace these demo records with your own shop data.
-const featuredShops = {
-  A12: {
-    name: "Slow Bar Coffee",
-    category: "Food & Drink",
-    logo: "☕",
-    color: "#f5ece3",
-    description:
-      "Specialty coffee, fresh milk, and homemade bakery served with carefully selected ingredients.",
-    promotion: "Buy any two handcrafted drinks and receive 10% off.",
-    hours: "10:00 AM – 08:00 PM",
-  },
-  B05: {
-    name: "Craft Studio",
-    category: "Crafts",
-    logo: "🏺",
-    color: "#f1eee6",
-    description:
-      "Handcrafted ceramics, thoughtful home accessories, and small-batch pieces made by local artists.",
-    promotion: "Free gift wrapping with every purchase.",
-    hours: "10:00 AM – 08:30 PM",
-  },
-  C08: {
-    name: "Fashion House",
-    category: "Fashion",
-    logo: "👕",
-    color: "#edf0fb",
-    description:
-      "Discover everyday linen essentials, contemporary apparel, and handmade accessories.",
-    promotion: "Save 15% when you purchase three items.",
-    hours: "10:30 AM – 09:00 PM",
-  },
-  D04: {
-    name: "Grandma’s Bakery",
-    category: "Food & Drink",
-    logo: "🥐",
-    color: "#fff0db",
-    description:
-      "Freshly baked sourdough, buttery croissants, and traditional family recipes made with love.",
-    promotion: "Coffee and croissant combo available all day.",
-    hours: "09:00 AM – 07:00 PM",
-  },
-  E03: {
-    name: "Green Plant",
-    category: "Plants",
-    logo: "🪴",
-    color: "#eaf4e7",
-    description:
-      "Indoor plants, tiny terrariums, and botanical care kits to bring a little green into your home.",
-    promotion: "A complimentary care guide with every plant.",
-    hours: "10:00 AM – 08:00 PM",
-  },
-};
-
-const booths = [];
-const boothElements = new Map();
 
 const state = {
   selected: "",
@@ -132,32 +81,57 @@ function addBooth(zone, number, x, y, width = 64, height = 44) {
   });
 }
 
-// Main clusters: 3 blocks of 4 booths per zone.
-["A", "B", "C"].forEach((zone, zoneIndex) => {
-  for (let number = 1; number <= 12; number++) {
-    const index = number - 1;
-    const block = Math.floor(index / 4);
-    const row = Math.floor((index % 4) / 2);
-    const column = index % 2;
+function buildMapData() {
+  booths.length = 0;
 
-    addBooth(
-      zone,
-      number,
-      145 + zoneIndex * 210 + column * 70,
-      300 + block * 145 + row * 50,
-    );
+  ["A", "B", "C"].forEach((zone, zoneIndex) => {
+    for (let number = 1; number <= 12; number++) {
+      const index = number - 1;
+      const block = Math.floor(index / 4);
+      const row = Math.floor((index % 4) / 2);
+      const column = index % 2;
+
+      addBooth(
+        zone,
+        number,
+        145 + zoneIndex * 210 + column * 70,
+        300 + block * 145 + row * 50,
+      );
+    }
+  });
+
+  for (let number = 1; number <= 6; number++) {
+    addBooth("D", number, 155 + (number - 1) * 78, 175);
   }
-});
 
-for (let number = 1; number <= 6; number++) {
-  addBooth("D", number, 155 + (number - 1) * 78, 175);
+  // Update lookup map after rebuilding booths array
+  boothById = new Map(booths.map((booth) => [booth.id, booth]));
 }
 
-// for (let number = 1; number <= 3; number++) {
-//   addBooth("E", number, 295 + (number - 1) * 74, 747, 64, 38);
-// }
+async function loadShopsFromGoogleSheet() {
+  try {
+    const response = await fetch(GOOGLE_SHEET_API);
 
-const boothById = new Map(booths.map((booth) => [booth.id, booth]));
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    featuredShops = await response.json();
+
+    // โหลดข้อมูลร้านเสร็จแล้วค่อย rebuild
+    buildMapData();
+    renderMap();
+    applyFilters();
+
+    const selectedId = state.selected || "A01";
+
+    if (boothById.has(selectedId)) {
+      selectBooth(selectedId);
+    }
+  } catch (error) {
+    console.error("Error loading shop data:", error);
+  }
+}
 
 function addZoneLabel(zone, x, y) {
   const color = zones[zone];
@@ -190,11 +164,16 @@ function addZoneLabel(zone, x, y) {
 }
 
 function renderMap() {
+  $("#zone-labels").replaceChildren();
+  $("#booth-layer").replaceChildren();
+  $("#gates").replaceChildren();
+  $("#zone-filters").replaceChildren();
+  boothElements.clear();
+
   addZoneLabel("D", 400, 155);
   addZoneLabel("A", 212, 277);
   addZoneLabel("B", 422, 277);
   addZoneLabel("C", 632, 277);
-  //   addZoneLabel("E", 400, 732);
 
   booths.forEach((booth) => {
     const color = zones[booth.zone];
@@ -307,8 +286,6 @@ function renderMap() {
   });
 }
 
-// Search and filters
-
 function filteredBooths() {
   return booths.filter((booth) => {
     const searchable =
@@ -385,11 +362,13 @@ function applyFilters(centerSearch = false) {
 
   booths.forEach((booth) => {
     const element = boothElements.get(booth.id);
-    element.classList.toggle("muted-booth", !ids.has(booth.id));
-    element.classList.toggle(
-      "match",
-      Boolean(state.query) && ids.has(booth.id),
-    );
+    if (element) {
+      element.classList.toggle("muted-booth", !ids.has(booth.id));
+      element.classList.toggle(
+        "match",
+        Boolean(state.query) && ids.has(booth.id),
+      );
+    }
   });
 
   if (centerSearch && state.query && results.length) {
@@ -419,7 +398,7 @@ $("#search").addEventListener("keydown", (event) => {
   applyFilters(true);
 
   const results = filteredBooths();
-  if (results.length) selectBooth(state.selected, true, true);
+  if (results.length) selectBooth(state.selected || results[0].id, true, true);
 });
 
 $("#category").addEventListener("change", (event) => {
@@ -437,8 +416,6 @@ function resetFilters() {
   applyFilters();
 }
 
-// Details
-
 function detailHTML(booth) {
   return `
         <div class="detail-top">
@@ -450,7 +427,7 @@ function detailHTML(booth) {
           <h2>${escapeHTML(booth.name)}</h2>
 
           <div class="detail-hero" style="--hero-bg:${booth.color}">
-            <span class="hero-logo" role="img" aria-label="${escapeHTML(booth.name)} demo logo">
+            <span class="hero-logo" role="img" aria-label="${escapeHTML(booth.name)} logo">
               ${booth.logo}
             </span>
             <span class="hero-caption">${escapeHTML(booth.category)}</span>
@@ -462,7 +439,7 @@ function detailHTML(booth) {
           </section>
 
           <div class="promotion">
-            <strong>✦ Current promotion · Demo</strong>
+            <strong>✦ Current promotion</strong>
             ${escapeHTML(booth.promotion)}
           </div>
 
@@ -537,7 +514,7 @@ function selectBooth(id, openMobile = false, center = false) {
     url.hash = id;
     history.replaceState(null, "", url);
   } catch {
-    // Some browsers restrict history updates on local files.
+    // Local file execution safeguard
   }
 }
 
@@ -550,8 +527,6 @@ desktopQuery.addEventListener("change", (event) => {
     $("#detail-dialog").close();
   }
 });
-
-// Pan and zoom
 
 const viewport = $("#viewport");
 const world = $("#world");
@@ -635,7 +610,6 @@ function fitMap() {
   state.scale = state.minScale;
 
   state.x = (viewport.clientWidth - 800 * state.scale) / 2;
-
   state.y = (viewport.clientHeight - 900 * state.scale) / 2;
 
   paint();
@@ -650,9 +624,7 @@ function centerBooth(booth) {
 
   animateTo(
     viewport.clientWidth / 2 - (booth.x + booth.width / 2) * scale,
-
     viewport.clientHeight / 2 - (booth.y + booth.height / 2) * scale,
-
     scale,
   );
 }
@@ -817,7 +789,6 @@ viewport.addEventListener("pointercancel", endPointer);
 viewport.addEventListener("lostpointercapture", endPointer);
 
 viewport.addEventListener("keydown", (event) => {
-  // Booth keyboard activation is handled separately.
   if (event.target.closest(".booth")) return;
 
   const movements = {
@@ -847,9 +818,6 @@ viewport.addEventListener("keydown", (event) => {
 
 new ResizeObserver(fitMap).observe(viewport);
 
-// Illustrative routes along this demo layout's aisles.
-// This is not indoor positioning or emergency navigation.
-
 function routeFromEntrance(booth, entranceX) {
   const points = [
     [entranceX, 837],
@@ -876,7 +844,6 @@ function routeFromEntrance(booth, entranceX) {
     const centerY = booth.y + booth.height / 2;
     const edgeX = isLeft ? booth.x - 4 : booth.x + booth.width + 4;
 
-    // Outer corridors avoid the Zone E booths.
     const outerX = entranceX < 400 ? 104 : 734;
     points.push(
       [outerX, 808],
@@ -899,17 +866,16 @@ function routeFromEntrance(booth, entranceX) {
 function showDirections() {
   if (isBoothsPage) {
     const url = new URL("./index.html", location.href);
-
     url.hash = state.selected;
     url.searchParams.set("directions", "1");
-
     location.assign(url.href);
     return;
   }
 
   const booth = boothById.get(state.selected);
-  const routes = [routeFromEntrance(booth, 255), routeFromEntrance(booth, 545)];
+  if (!booth) return;
 
+  const routes = [routeFromEntrance(booth, 255), routeFromEntrance(booth, 545)];
   const route = routes.sort((a, b) => a.length - b.length)[0];
 
   $("#route-path").setAttribute(
@@ -919,7 +885,6 @@ function showDirections() {
       .join(" "),
   );
 
-  // Keep every part of the route visible.
   resetFilters();
   fitMap();
 
@@ -940,8 +905,6 @@ function showDirections() {
     `Route displayed from Entrance ${route.entrance} to booth ${booth.id}.`;
 }
 
-// Sharing
-
 let toastTimer;
 
 function toast(message) {
@@ -953,11 +916,12 @@ function toast(message) {
 
 async function shareBooth() {
   const booth = boothById.get(state.selected);
+  if (!booth) return;
+
   const url = new URL(location.href);
   url.hash = booth.id;
   const text = `${booth.name} — Zone ${booth.zone}, Booth ${booth.id}`;
 
-  // Local file URLs cannot be opened by other visitors.
   if (!/^https?:$/.test(url.protocol)) {
     window.prompt(
       "Copy booth details. Host this page online to share a link:",
@@ -994,19 +958,12 @@ async function shareBooth() {
   });
 });
 
-// Navigation
-
-// ล้างตัวกรองรายการ
 $("#view-all").addEventListener("click", resetFilters);
-
-// Map และ All Booths ใช้ href ใน HTML เปลี่ยนหน้าโดยตรง
-// ไม่ต้องผูก click เพื่อ scrollIntoView อีก
 
 $("#nav-info").addEventListener("click", () => {
   $("#info-dialog").showModal();
 });
 
-// แสดงสถานะเมนูให้ตรงกับหน้าปัจจุบัน
 const activeNavId = isBoothsPage ? "nav-booths" : "nav-map";
 
 ["nav-map", "nav-booths"].forEach((id) => {
@@ -1027,31 +984,22 @@ window.addEventListener("hashchange", () => {
   if (boothById.has(id)) selectBooth(id, false, true);
 });
 
-// Initialize
+function initApp() {
+  buildMapData();
+  renderMap();
+  applyFilters();
+  fitMap();
 
-renderMap();
-applyFilters();
-fitMap();
+  const initialId = location.hash.slice(1).toUpperCase();
+  const defaultBooth = boothById.has(initialId) ? initialId : "A01";
+  selectBooth(defaultBooth);
 
-const initialId = location.hash.slice(1).toUpperCase();
-selectBooth(boothById.has(initialId));
-// selectBooth(boothById.has(initialId) ? initialId : "A12");
-
-$("#footer").textContent =
-  `EventMap · ${booths.length} booth locations · Demo event directory`;
-
-// เปิดเส้นทางเมื่อมาจากหน้า All Booths
-const pageUrl = new URL(location.href);
-
-if (!isBoothsPage && pageUrl.searchParams.get("directions") === "1") {
-  showDirections();
-
-  // ลบคำสั่งออกจาก URL หลังใช้งานแล้ว
-  pageUrl.searchParams.delete("directions");
-
-  try {
-    history.replaceState(null, "", pageUrl.href);
-  } catch {
-    // บางเบราว์เซอร์จำกัด History API เมื่อเปิดไฟล์ในเครื่อง
-  }
+  $("#footer").textContent =
+    `EventMap · ${booths.length} booth locations · Demo event directory`;
 }
+
+// เปิดหน้าเว็บก่อน
+initApp();
+
+// แล้วค่อยโหลด Google Sheet
+loadShopsFromGoogleSheet();
