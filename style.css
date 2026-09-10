@@ -18,12 +18,14 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family:
-  Inter,
-  ui-sans-serif,
-  system-ui,
-  -apple-system,
-  sans-serif;
+    "Noto Sans Lao",
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
   font-size: 14px;
+  line-height: 1.55;
 }
 
 button,
@@ -31,27 +33,33 @@ input,
 select {
   font: inherit;
 }
+
 button {
   cursor: pointer;
 }
+
 button,
 a,
 input,
 select {
   -webkit-tap-highlight-color: transparent;
 }
+
 button {
   color: inherit;
 }
+
 a {
   color: inherit;
 }
+
 h1,
 h2,
 h3,
 p {
   margin: 0;
 }
+
 [hidden] {
   display: none !important;
 }
@@ -130,6 +138,55 @@ p {
   color: var(--muted);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lang-switcher {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg);
+  padding: 3px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.lang-btn {
+  border: 0;
+  background: transparent;
+  padding: 5px 11px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.lang-btn:hover {
+  color: var(--text);
+}
+
+.lang-btn.active {
+  background: var(--surface);
+  color: var(--brand);
+  box-shadow: 0 1px 4px rgba(24, 33, 50, 0.12);
+  font-weight: 750;
+}
+
+.flag-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
 .navigation {
   display: flex;
   gap: 8px;
@@ -187,6 +244,7 @@ p {
 .directory-heading h2 {
   font-size: 15px;
 }
+
 .count {
   font-size: 12px;
   color: var(--muted);
@@ -213,8 +271,8 @@ p {
   border: 1px solid var(--border);
   border-radius: 13px;
   transition:
-  border-color 0.15s,
-  background 0.15s;
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .shop-card:hover {
@@ -237,10 +295,23 @@ p {
   font-size: 27px;
   background: var(--logo-bg, #f6eee8);
 }
+.shop-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
 
+.shop-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
 .shop-text {
   min-width: 0;
 }
+
 .shop-title {
   font-size: 12px;
   font-weight: 750;
@@ -331,12 +402,15 @@ p {
 }
 
 .category-select {
-  width: 108px;
-  padding: 0 9px;
+  width: auto;
+  min-width: 120px;
+  max-width: 220px;
+  padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: white;
   font-size: 12px;
+  cursor: pointer;
 }
 
 .zone-filters {
@@ -400,12 +474,14 @@ p {
 .booth {
   cursor: pointer;
 }
+
 .booth rect {
   transition:
-  fill 0.15s,
-  stroke 0.15s,
-  opacity 0.15s;
+    fill 0.15s,
+    stroke 0.15s,
+    opacity 0.15s;
 }
+
 .booth:hover rect {
   stroke: var(--brand);
   stroke-width: 2;
@@ -421,10 +497,12 @@ p {
   fill: white;
   font-weight: 750;
 }
+
 .booth.match:not(.selected) rect {
   stroke: var(--brand);
   stroke-width: 2.5;
 }
+
 .booth.muted-booth {
   opacity: 0.2;
 }
@@ -432,6 +510,7 @@ p {
 .booth:focus {
   outline: none;
 }
+
 .booth:focus-visible rect {
   stroke: #182132;
   stroke-width: 3;
@@ -464,6 +543,7 @@ p {
 .control-button:hover {
   background: #f1f3f7;
 }
+
 .control-button.fit {
   font-size: 17px;
 }
@@ -483,6 +563,7 @@ p {
   gap: 12px;
   align-items: center;
 }
+
 .legend span {
   display: flex;
   gap: 5px;
@@ -537,9 +618,11 @@ p {
   color: var(--muted);
   font-size: 11px;
 }
+
 .detail-body {
   padding: 18px;
 }
+
 .detail-body h2 {
   font-size: 22px;
   letter-spacing: -0.6px;
@@ -567,6 +650,20 @@ p {
   background: #ffffffc9;
   border-radius: 23px;
   box-shadow: 0 5px 20px #00000006;
+}
+
+.hero-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.hero-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .hero-caption {
@@ -625,6 +722,7 @@ p {
   align-items: center;
   gap: 10px;
 }
+
 .fact .icon {
   color: #98a2b4;
   width: 16px;
@@ -750,82 +848,85 @@ footer {
 
 /* Mobile bottom navigation */
 @media (max-width: 639px) {
+
   /* เว้นพื้นที่ไม่ให้ navigation บังเนื้อหาท้ายหน้า */
   body {
     padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
   }
+
   body:not(.booths-page) #directory {
     display: none;
   }
-/* ย้ายเมนูเดิมจาก Header มาไว้ด้านล่างจอ */
-.navigation {
-  position: fixed;
-  inset: auto 0 0;
-  z-index: 40;
-  
-  display: flex;
-  align-items: stretch;
-  justify-content: space-around;
-  gap: 4px;
-  
-  width: 100%;
-  padding: 8px 12px;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-  
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  box-shadow: 0 -4px 20px rgb(24 33 50 / 8%);
-}
 
-/* แต่ละปุ่มกว้างเท่ากัน และวางไอคอนเหนือข้อความ */
-.navigation .nav-button {
-  flex: 1;
-  min-width: 0;
-  min-height: 56px;
-  
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  
-  padding: 8px 4px;
-  border: 0;
-  border-radius: 10px;
-  
-  background: transparent;
-  color: var(--muted);
-  text-align: center;
-}
+  /* ย้ายเมนูเดิมจาก Header มาไว้ด้านล่างจอ */
+  .navigation {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 40;
 
-.navigation .nav-button .icon {
-  width: 22px;
-  height: 22px;
-}
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 4px;
 
-/* CSS เดิมซ่อนข้อความบนมือถือ จึงเปิดให้แสดงที่แถบล่าง */
-.navigation .nav-label {
-  display: block;
-  font-size: 11px;
-  line-height: 1.3;
-  white-space: nowrap;
-}
+    width: 100%;
+    padding: 8px 12px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
 
-.navigation .nav-button.current {
-  background: #fff1f2;
-  color: var(--brand);
-  font-weight: 700;
-}
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 20px rgb(24 33 50 / 8%);
+  }
 
-.navigation .nav-button:active {
-  background: #fff1f2;
-  color: var(--brand);
-}
+  /* แต่ละปุ่มกว้างเท่ากัน และวางไอคอนเหนือข้อความ */
+  .navigation .nav-button {
+    flex: 1;
+    min-width: 0;
+    min-height: 56px;
 
-/* ยกข้อความแจ้งเตือนขึ้น ไม่ให้ทับ navigation */
-.toast {
-  bottom: calc(90px + env(safe-area-inset-bottom, 0px));
-}
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+
+    padding: 8px 4px;
+    border: 0;
+    border-radius: 10px;
+
+    background: transparent;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .navigation .nav-button .icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* CSS เดิมซ่อนข้อความบนมือถือ จึงเปิดให้แสดงที่แถบล่าง */
+  .navigation .nav-label {
+    display: block;
+    font-size: 11px;
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+
+  .navigation .nav-button.current {
+    background: #fff1f2;
+    color: var(--brand);
+    font-weight: 700;
+  }
+
+  .navigation .nav-button:active {
+    background: #fff1f2;
+    color: var(--brand);
+  }
+
+  /* ยกข้อความแจ้งเตือนขึ้น ไม่ให้ทับ navigation */
+  .toast {
+    bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 @media (min-width: 1100px) {
@@ -835,38 +936,42 @@ footer {
     gap: 20px;
   }
 
-.directory {
-  order: 0;
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 165px);
-  min-height: 650px;
-}
+  .directory {
+    order: 0;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 165px);
+    min-height: 650px;
+  }
 
-.directory-list {
-  flex: 1;
-  max-height: none;
-}
+  .directory-list {
+    flex: 1;
+    max-height: none;
+  }
 
-.map-column {
-  order: 0;
-}
+  .map-column {
+    order: 0;
+  }
 
-.map-viewport {
-  height: calc(100vh - 308px);
-  min-height: 530px;
-}
+  .map-viewport {
+    height: calc(100vh - 308px);
+    min-height: 530px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
 
-.desktop-detail {
-  display: block;
-  max-height: calc(100vh - 165px);
-  min-height: 650px;
-  overflow-y: auto;
-}
+  .desktop-detail {
+    display: block;
+    max-height: calc(100vh - 165px);
+    min-height: 650px;
+    overflow-y: auto;
+  }
 
-.navigation {
-  gap: 24px;
-}
+  .navigation {
+    gap: 24px;
+  }
 }
 
 @media (min-width: 1400px) {
@@ -876,6 +981,7 @@ footer {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
@@ -936,93 +1042,19 @@ All Booths page
 /* จอใหญ่ของหน้า All Booths:
 รายการด้านซ้าย รายละเอียดด้านขวา */
 @media (min-width: 1100px) {
+
   .booths-page .layout {
     grid-template-columns: minmax(0, 1fr) 310px;
   }
 
-.booths-page .directory-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-}
-
-/* ========================================
-Mobile bottom navigation
-======================================== */
-
-@media (max-width: 639px) {
-  body {
-    padding-bottom: calc(
-    88px + env(safe-area-inset-bottom, 0px)
-    );
+  .booths-page .directory-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-.navigation {
-  position: fixed;
-  inset: auto 0 0;
-  z-index: 40;
-  
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
-  
-  width: 100%;
-  padding: 8px 12px;
-  padding-bottom: calc(
-  8px + env(safe-area-inset-bottom, 0px)
-  );
-  
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  box-shadow: 0 -4px 20px rgb(24 33 50 / 8%);
 }
 
-.navigation .nav-button {
-  flex: 1;
-  min-width: 0;
-  min-height: 56px;
-  
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  
-  margin: 0;
-  padding: 8px 4px;
-  border: 0;
-  border-radius: 10px;
-  
-  background: transparent;
-  color: var(--muted);
-  text-align: center;
+@media (max-width: 1099px) {
+  body:not(.booths-page) #directory {
+    display: none;
+  }
 }
 
-.navigation .nav-button .icon {
-  width: 22px;
-  height: 22px;
-}
-
-.navigation .nav-label {
-  display: block;
-  font-size: 11px;
-  line-height: 1.3;
-  white-space: nowrap;
-}
-
-.navigation .nav-button.current {
-  background: #fff1f2;
-  color: var(--brand);
-  font-weight: 700;
-}
-
-.navigation .nav-button:active {
-  background: #fff1f2;
-  color: var(--brand);
-}
-
-.toast {
-  bottom: calc(
-  90px + env(safe-area-inset-bottom, 0px)
-  );
-}
-}
