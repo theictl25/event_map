@@ -46,7 +46,7 @@ export async function loadShopsFromGoogleSheet(onSuccessCallback) {
     const response = await fetch(GOOGLE_SHEET_API);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error(`HTTP ${sresponse.status}`);
     }
 
     const shops = await response.json();

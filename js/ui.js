@@ -28,6 +28,15 @@ export function escapeHTML(value) {
   );
 }
 
+function getSafeFacebookURL(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return /^https?:$/.test(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 export function populateCategoryDropdown() {
   const select = $("#category");
   if (!select) return;
@@ -201,6 +210,14 @@ export function detailHTML(booth) {
   const boothText =
     state.lang === "lo" ? `ບູທ ${booth.id}` : `Booth ${booth.id}`;
   const categoryName = getCategoryName(booth.category);
+  const facebookURL = getSafeFacebookURL(booth.facebook);
+  const facebookHTML = facebookURL
+    ? `
+        <div class="fact">
+          <span aria-hidden="true">f</span>
+          <a href="${escapeHTML(facebookURL)}" target="_blank" rel="noopener noreferrer">${t("facebook")}</a>
+        </div>`
+    : "";
 
   return `
     <div class="detail-top">
@@ -227,11 +244,6 @@ export function detailHTML(booth) {
         <p class="description">${escapeHTML(booth.description)}</p>
       </section>
 
-      <div class="promotion">
-        <strong>${t("currentPromotion")}</strong>
-        ${escapeHTML(booth.promotion)}
-      </div>
-
       <div class="detail-facts">
         <div class="fact">
           ${icon("pin")}
@@ -241,6 +253,7 @@ export function detailHTML(booth) {
           ${icon("clock")}
           <span>${escapeHTML(booth.hours)}</span>
         </div>
+        ${facebookHTML}
       </div>
     </div>
 

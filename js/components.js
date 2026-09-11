@@ -128,7 +128,7 @@ export function injectDialogs() {
           Keyboard users can focus booths with Tab and open them with Enter.
         </p>
         <p data-i18n="infoText3">
-          This is a demonstration venue. Store information, promotions, and
+          This is a demonstration venue. Store information and
           walking routes are illustrative, not live event or emergency guidance.
         </p>
         <form method="dialog">

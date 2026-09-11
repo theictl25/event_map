@@ -842,22 +842,6 @@ p {
   line-height: 1.85;
 }
 
-.promotion {
-  margin-top: 18px;
-  padding: 13px;
-  background: #fff8e7;
-  border: 1px solid #fae8b8;
-  border-radius: 10px;
-  color: #886320;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.promotion strong {
-  display: block;
-  margin-bottom: 3px;
-}
-
 .detail-facts {
   display: grid;
   gap: 14px;

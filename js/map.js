@@ -45,8 +45,8 @@ export function addBooth(zone, number, x, y, width = 64, height = 44) {
     logo: String(shop?.logo ?? "").trim() || DEFAULT_LOGO,
     color: shop?.color || "#eff2f6",
     description: shop?.description || t("defaultDesc"),
-    promotion: shop?.promotion || t("defaultPromo"),
     hours: shop?.hours || t("defaultHours"),
+    facebook: String(shop?.facebook ?? "").trim(),
     featured: Boolean(shop),
   });
 }
