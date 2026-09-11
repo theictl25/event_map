@@ -1,5 +1,21 @@
-import { $, SVG_NS, zones, MAP_WIDTH, MAP_HEIGHT, MAP_CONFIG, desktopQuery, reducedMotion } from "./config.js";
-import { state, booths, boothElements, boothById, featuredShops, updateBoothByIdMap } from "./state.js";
+import {
+  $,
+  SVG_NS,
+  zones,
+  MAP_WIDTH,
+  MAP_HEIGHT,
+  MAP_CONFIG,
+  desktopQuery,
+  reducedMotion,
+} from "./config.js";
+import {
+  state,
+  booths,
+  boothElements,
+  boothById,
+  featuredShops,
+  updateBoothByIdMap,
+} from "./state.js";
 import { t } from "./i18n.js";
 
 export function svgElement(tag, attributes = {}, text) {
@@ -15,7 +31,8 @@ export function addBooth(zone, number, x, y, width = 64, height = 44) {
   const id = zone + String(number).padStart(2, "0");
   const shop = featuredShops[id];
   const defaultName = state.lang === "lo" ? `ບູທ ${id}` : `Booth ${id}`;
-
+  const DEFAULT_LOGO = new URL("./assets/default_logo.png", document.baseURI)
+    .href;
   booths.push({
     id,
     zone,
@@ -25,7 +42,7 @@ export function addBooth(zone, number, x, y, width = 64, height = 44) {
     height,
     name: shop?.name || defaultName,
     category: shop?.category || "Other",
-    logo: shop?.logo || "🛍️",
+    logo: String(shop?.logo ?? "").trim() || DEFAULT_LOGO,
     color: shop?.color || "#eff2f6",
     description: shop?.description || t("defaultDesc"),
     promotion: shop?.promotion || t("defaultPromo"),
@@ -213,7 +230,12 @@ export function renderMap(applyFiltersCb) {
     const button = document.createElement("button");
     button.className = "zone-chip";
     button.dataset.zone = zone;
-    const label = zone === "all" ? t("zoneAll") : (state.lang === "lo" ? `ໂຊນ ${zone}` : `Zone ${zone}`);
+    const label =
+      zone === "all"
+        ? t("zoneAll")
+        : state.lang === "lo"
+          ? `ໂຊນ ${zone}`
+          : `Zone ${zone}`;
     button.textContent = label;
 
     button.addEventListener("click", () => {
@@ -456,218 +478,505 @@ export function routeFromEntrance(booth, entranceX) {
 
 export function setupMapInteractions() {
   const viewport = $("#viewport");
+
   if (!viewport) return;
+
+  // =========================================================
+  // ZOOM BUTTONS
+  // =========================================================
 
   $("#zoom-in")?.addEventListener("click", () => {
     const center = getViewportCenter();
+
     zoomAt(MAP_CONFIG.zoomButtonFactor, center.x, center.y);
   });
 
   $("#zoom-out")?.addEventListener("click", () => {
     const center = getViewportCenter();
+
     zoomAt(1 / MAP_CONFIG.zoomButtonFactor, center.x, center.y);
   });
 
-  $("#fit-map")?.addEventListener("click", fitMap);
+  $("#fit-map")?.addEventListener("click", () => {
+    fitMap();
+  });
+
+  // =========================================================
+  // MOUSE WHEEL
+  // =========================================================
 
   viewport.addEventListener(
     "wheel",
     (event) => {
+      let delta = event.deltaY;
+
+      // Normalize wheel delta
+      if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+        delta *= 16;
+      }
+
+      if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+        delta *= window.innerHeight;
+      }
+
+      delta = clamp(delta, -120, 120);
+
+      if (Math.abs(delta) < 0.01) return;
+
+      // =====================================================
+      // SHIFT + SCROLL = PAN VERTICAL
+      // =====================================================
+
+      if (event.shiftKey) {
+        event.preventDefault();
+
+        stopAnimation();
+
+        state.y -= delta;
+
+        constrain();
+        paint();
+
+        return;
+      }
+
+      // =====================================================
+      // AT MIN SCALE
+      // SCROLL DOWN -> PAGE DOWN
+      // SCROLL UP   -> PAGE UP
+      // =====================================================
+
+      const atMinScale = state.scale <= state.minScale + 0.0001;
+
+      if (atMinScale) {
+        event.preventDefault();
+
+        window.scrollBy({
+          top: delta,
+          left: 0,
+          behavior: "auto",
+        });
+
+        return;
+      }
+
+      // =====================================================
+      // NORMAL SCROLL = ZOOM
+      // =====================================================
+
       event.preventDefault();
+
       const point = localPoint(event);
-      const delta = clamp(event.deltaY, -100, 100);
+
       const factor = Math.exp(-delta * MAP_CONFIG.wheelSensitivity);
+
       zoomAt(factor, point.x, point.y);
     },
-    { passive: false }
+    {
+      passive: false,
+    },
   );
 
+  // =========================================================
+  // DOUBLE CLICK = ZOOM IN
+  // =========================================================
+
+  viewport.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+
+    const point = localPoint(event);
+
+    zoomAt(MAP_CONFIG.zoomButtonFactor, point.x, point.y);
+  });
+
+  // =========================================================
+  // POINTER STATE
+  // =========================================================
+
   const pointers = new Map();
+
   let gesture = null;
   let tap = null;
 
-  function restartGesture() {
-    const points = [...pointers.values()];
-    if (points.length >= 2) {
+  // =========================================================
+  // POINTER DOWN
+  // Mouse:
+  //   Left click = Pan
+  //
+  // Mobile:
+  //   One finger = Pan
+  //   Two fingers = Pinch
+  // =========================================================
+
+  viewport.addEventListener("pointerdown", (event) => {
+    // Mouse only accepts left button
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    stopAnimation();
+
+    const point = localPoint(event);
+
+    pointers.set(event.pointerId, point);
+
+    // =====================================================
+    // FIRST POINTER
+    // =====================================================
+
+    if (pointers.size === 1) {
+      const boothElement = event.target.closest(".booth");
+
+      tap = {
+        pointerId: event.pointerId,
+
+        point: {
+          x: point.x,
+          y: point.y,
+        },
+
+        id: boothElement?.dataset.id || null,
+
+        moved: false,
+      };
+
+      // Start Pan gesture
+
+      gesture = {
+        type: "pan",
+
+        point: {
+          x: point.x,
+          y: point.y,
+        },
+
+        x: state.x,
+        y: state.y,
+      };
+    }
+
+    // =====================================================
+    // SECOND POINTER
+    // Start Pinch
+    // =====================================================
+
+    if (pointers.size >= 2) {
+      if (tap) {
+        tap.moved = true;
+      }
+
+      const points = [...pointers.values()];
+
       const [a, b] = points;
-      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+      const midpoint = {
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2,
+      };
+
       const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
 
       gesture = {
         type: "pinch",
+
         distance,
+
         midpoint,
-        x: state.x,
-        y: state.y,
+
         scale: state.scale,
+
         mapX: (midpoint.x - state.x) / state.scale,
+
         mapY: (midpoint.y - state.y) / state.scale,
       };
-      return;
     }
 
-    if (points.length === 1) {
-      const point = points[0];
-      gesture = {
-        type: "pan",
-        point: { x: point.x, y: point.y },
-        x: state.x,
-        y: state.y,
-      };
-      return;
-    }
-
-    gesture = null;
-  }
-
-  viewport.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    stopAnimation();
-    const point = localPoint(event);
-    pointers.set(event.pointerId, point);
-
-    if (pointers.size === 1) {
-      tap = {
-        pointerId: event.pointerId,
-        point: { x: point.x, y: point.y },
-        id: event.target.closest(".booth")?.dataset.id,
-        moved: false,
-      };
-    }
-
-    if (pointers.size >= 2 && tap) tap.moved = true;
+    // Capture pointer
 
     viewport.setPointerCapture(event.pointerId);
+
     viewport.classList.add("dragging");
-    restartGesture();
   });
 
+  // =========================================================
+  // POINTER MOVE
+  //
+  // THIS IS THE IMPORTANT PART
+  // ทำให้ Drag Map ได้จริง
+  // =========================================================
+
   viewport.addEventListener("pointermove", (event) => {
-    if (!pointers.has(event.pointerId)) return;
+    if (!pointers.has(event.pointerId)) {
+      return;
+    }
+
     const point = localPoint(event);
+
     pointers.set(event.pointerId, point);
+
+    // =====================================================
+    // DETECT DRAG
+    // =====================================================
 
     if (tap) {
       const distance = Math.hypot(point.x - tap.point.x, point.y - tap.point.y);
-      if (distance > MAP_CONFIG.dragThreshold) tap.moved = true;
+
+      if (distance > MAP_CONFIG.dragThreshold) {
+        tap.moved = true;
+      }
     }
 
-    if (gesture?.type === "pinch" && pointers.size >= 2) {
+    // =====================================================
+    // PINCH
+    // =====================================================
+
+    if (pointers.size >= 2) {
       const points = [...pointers.values()];
+
       const [a, b] = points;
+
+      const midpoint = {
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2,
+      };
+
       const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
-      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+      if (!gesture || gesture.type !== "pinch") {
+        gesture = {
+          type: "pinch",
+
+          distance,
+
+          midpoint,
+
+          scale: state.scale,
+
+          mapX: (midpoint.x - state.x) / state.scale,
+
+          mapY: (midpoint.y - state.y) / state.scale,
+        };
+      }
+
+      // Scale ratio
+
       const scaleRatio = distance / gesture.distance;
+
       const newScale = clamp(
         gesture.scale * Math.pow(scaleRatio, MAP_CONFIG.pinchSensitivity),
+
         state.minScale,
+
         state.maxScale,
       );
 
       state.scale = newScale;
-      state.x = midpoint.x - gesture.mapX * newScale;
-      state.y = midpoint.y - gesture.mapY * newScale;
-    } else if (gesture?.type === "pan") {
-      state.x = gesture.x + point.x - gesture.point.x;
-      state.y = gesture.y + point.y - gesture.point.y;
+
+      // Keep pinch center fixed
+
+      state.x = midpoint.x - gesture.mapX * state.scale;
+
+      state.y = midpoint.y - gesture.mapY * state.scale;
+
+      constrain();
+      paint();
+
+      return;
     }
 
-    paint();
+    // =====================================================
+    // NORMAL PAN
+    // =====================================================
+
+    if (pointers.size === 1 && gesture?.type === "pan") {
+      state.x = gesture.x + point.x - gesture.point.x;
+
+      state.y = gesture.y + point.y - gesture.point.y;
+
+      constrain();
+      paint();
+    }
   });
 
+  // =========================================================
+  // POINTER END
+  // =========================================================
+
   function endPointer(event) {
-    if (!pointers.has(event.pointerId)) return;
+    if (!pointers.has(event.pointerId)) {
+      return;
+    }
+
+    // =====================================================
+    // CHECK CLICK BOOTH
+    // =====================================================
 
     const shouldSelect =
       event.type === "pointerup" &&
-      tap?.pointerId === event.pointerId &&
+      tap &&
+      tap.pointerId === event.pointerId &&
       !tap.moved &&
       tap.id &&
       pointers.size === 1;
 
-    const selectedId = tap?.id;
+    const selectedId = tap?.id || null;
+
+    // Remove pointer
+
     pointers.delete(event.pointerId);
+
+    // Release pointer capture
 
     if (viewport.hasPointerCapture(event.pointerId)) {
       viewport.releasePointerCapture(event.pointerId);
     }
 
-    if (!pointers.size) {
+    // =====================================================
+    // NO POINTER LEFT
+    // =====================================================
+
+    if (pointers.size === 0) {
       viewport.classList.remove("dragging");
+
       gesture = null;
       tap = null;
-    } else {
-      restartGesture();
     }
 
-    if (shouldSelect && selectBoothRef) {
+    // =====================================================
+    // ONE POINTER REMAINS
+    // After pinch -> continue pan
+    // =====================================================
+    else if (pointers.size === 1) {
+      const [point] = pointers.values();
+
+      gesture = {
+        type: "pan",
+
+        point: {
+          x: point.x,
+          y: point.y,
+        },
+
+        x: state.x,
+        y: state.y,
+      };
+    }
+
+    // =====================================================
+    // SELECT BOOTH
+    // =====================================================
+
+    if (shouldSelect && selectedId && selectBoothRef) {
       selectBoothRef(selectedId, true, false);
     }
   }
 
   viewport.addEventListener("pointerup", endPointer);
+
   viewport.addEventListener("pointercancel", endPointer);
+
   viewport.addEventListener("lostpointercapture", endPointer);
 
+  // =========================================================
+  // KEYBOARD
+  // =========================================================
+
   viewport.addEventListener("keydown", (event) => {
-    if (event.target.closest(".booth")) return;
+    const step = 40;
 
-    const movements = {
-      ArrowLeft: [50, 0],
-      ArrowRight: [-50, 0],
-      ArrowUp: [0, 50],
-      ArrowDown: [0, -50],
-    };
+    switch (event.key) {
+      case "ArrowUp":
+        event.preventDefault();
 
-    if (movements[event.key]) {
-      event.preventDefault();
-      stopAnimation();
-      state.x += movements[event.key][0];
-      state.y += movements[event.key][1];
-      paint();
-      return;
-    }
+        state.y += step;
 
-    if (event.key === "+" || event.key === "=") {
-      event.preventDefault();
-      $("#zoom-in")?.click();
-      return;
-    }
+        constrain();
+        paint();
 
-    if (event.key === "-") {
-      event.preventDefault();
-      $("#zoom-out")?.click();
-      return;
-    }
+        break;
 
-    if (event.key === "0") {
-      event.preventDefault();
-      fitMap();
+      case "ArrowDown":
+        event.preventDefault();
+
+        state.y -= step;
+
+        constrain();
+        paint();
+
+        break;
+
+      case "ArrowLeft":
+        event.preventDefault();
+
+        state.x += step;
+
+        constrain();
+        paint();
+
+        break;
+
+      case "ArrowRight":
+        event.preventDefault();
+
+        state.x -= step;
+
+        constrain();
+        paint();
+
+        break;
+
+      case "+":
+      case "=": {
+        event.preventDefault();
+
+        const center = getViewportCenter();
+
+        zoomAt(MAP_CONFIG.zoomButtonFactor, center.x, center.y);
+
+        break;
+      }
+
+      case "-":
+      case "_": {
+        event.preventDefault();
+
+        const center = getViewportCenter();
+
+        zoomAt(1 / MAP_CONFIG.zoomButtonFactor, center.x, center.y);
+
+        break;
+      }
+
+      case "0":
+        event.preventDefault();
+
+        fitMap();
+
+        break;
     }
   });
 
-  let lastViewportWidth = viewport.clientWidth;
-  let lastViewportHeight = viewport.clientHeight;
+  // =========================================================
+  // RESIZE
+  // =========================================================
 
   const resizeObserver = new ResizeObserver(() => {
+    if (!viewport.clientWidth) {
+      return;
+    }
+
     const width = viewport.clientWidth;
+
     const height = viewport.clientHeight;
 
-    if (width === lastViewportWidth && height === lastViewportHeight) return;
-
-    lastViewportWidth = width;
-    lastViewportHeight = height;
-
-    const oldMinScale = state.minScale;
     state.minScale = Math.min(width / MAP_WIDTH, height / MAP_HEIGHT) * 0.95;
+
     state.maxScale = state.minScale * MAP_CONFIG.maxScaleMultiplier;
 
-    if (state.scale < state.minScale) {
-      const center = getViewportCenter();
-      zoomAt(state.minScale / Math.max(oldMinScale, 0.0001), center.x, center.y);
-    } else {
-      paint();
-    }
+    state.scale = clamp(state.scale, state.minScale, state.maxScale);
+
+    constrain();
+    paint();
   });
 
   resizeObserver.observe(viewport);

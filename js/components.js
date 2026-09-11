@@ -247,19 +247,60 @@ export function injectMainContent() {
           </svg>
         </div>
 
-        <div class="map-controls" aria-label="Map zoom controls">
-          <button class="control-button" id="zoom-in" aria-label="Zoom in" data-i18n-aria="zoomIn">+</button>
-          <button class="control-button" id="zoom-out" aria-label="Zoom out" data-i18n-aria="zoomOut">−</button>
-          <button class="control-button fit" id="fit-map" aria-label="Fit entire map" data-i18n-aria="fitMap">⛶</button>
-        </div>
 
-        <div class="map-bottom">
-          <div class="legend">
-            <span><i class="legend-dot"></i><span data-i18n="entranceLegend">Entrance</span></span>
-            <span><i class="legend-dot exit"></i><span data-i18n="exitLegend">Exit</span></span>
-          </div>
-          <span id="zoom-label">100%</span>
-        </div>
+    <div class="map-bottom">
+
+  <div class="legend">
+    <span>
+      <i class="legend-dot"></i>
+      <span data-i18n="entranceLegend">Entrance</span>
+    </span>
+
+    <span>
+      <i class="legend-dot exit"></i>
+      <span data-i18n="exitLegend">Exit</span>
+    </span>
+  </div>
+
+  <div class="map-actions">
+
+    <div class="map-controls" aria-label="Map zoom controls">
+
+      <button
+        class="control-button"
+        id="zoom-out"
+        aria-label="Zoom out"
+        data-i18n-aria="zoomOut"
+      >
+        −
+      </button>
+
+      <button
+        class="control-button"
+        id="zoom-in"
+        aria-label="Zoom in"
+        data-i18n-aria="zoomIn"
+      >
+        +
+      </button>
+
+      <button
+        class="control-button fit"
+        id="fit-map"
+        aria-label="Fit entire map"
+        data-i18n-aria="fitMap"
+        title="Fit map"
+      >
+        ⛶
+      </button>
+
+    </div>
+
+    <span class="zoom-value" id="zoom-label">100%</span>
+
+  </div>
+
+</div>
       </div>
 
       <p class="route-notice" id="route-notice" hidden></p>
