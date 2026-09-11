@@ -604,8 +604,9 @@ export function setupMapInteractions() {
   //   Left click = Pan
   //
   // Mobile:
-  //   One finger = Pan
-  //   Two fingers = Pinch
+  //   One finger at fit scale = page scroll
+  //   One finger after zoom = map pan
+  //   Two fingers = pinch zoom
   // =========================================================
 
   viewport.addEventListener("pointerdown", (event) => {
@@ -640,15 +641,22 @@ export function setupMapInteractions() {
         moved: false,
       };
 
-      // Start Pan gesture
+      // On mobile, let a one-finger drag scroll the page while the whole
+      // map is already visible. Once the user zooms in, the same gesture
+      // pans the map instead.
+      const shouldScrollPage =
+        event.pointerType === "touch" &&
+        state.scale <= state.minScale + 0.0001;
 
       gesture = {
-        type: "pan",
+        type: shouldScrollPage ? "page-scroll" : "pan",
 
         point: {
           x: point.x,
           y: point.y,
         },
+
+        clientY: event.clientY,
 
         x: state.x,
         y: state.y,
@@ -785,7 +793,18 @@ export function setupMapInteractions() {
     }
 
     // =====================================================
-    // NORMAL PAN
+    // MOBILE PAGE SCROLL AT FIT SCALE
+    // touch-action remains "none" so pinch zoom can be handled here. We
+    // therefore scroll the document ourselves while the map has no extra
+    // area to pan.
+    if (pointers.size === 1 && gesture?.type === "page-scroll") {
+      const deltaY = event.clientY - gesture.clientY;
+      window.scrollBy({ top: -deltaY, left: 0, behavior: "auto" });
+      gesture.clientY = event.clientY;
+      return;
+    }
+
+    // NORMAL MAP PAN
     // =====================================================
 
     if (pointers.size === 1 && gesture?.type === "pan") {
