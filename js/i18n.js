@@ -1,5 +1,5 @@
 import { $, isBoothsPage } from "./config.js";
-import { state, booths, boothById } from "./state.js";
+import { state, booths, boothById, eventInfo } from "./state.js";
 
 export const translations = {
   lo: {
@@ -39,16 +39,22 @@ export const translations = {
     getDirections: "ນຳທາງໄປບູທ",
     shareBooth: "ແຊຣ໌ບູທ",
     infoTitle: "ຍິນດີຕ້ອນຮັບສູ່ Event Map",
-    infoText1: "ຄົ້ນຫາຊື່ຮ້ານ ຫຼື ເລກບູທ, ກົດທີ່ບູທເພື່ອເບິ່ງລາຍລະອຽດ ແລະ ໃຊ້ຕົວຕອງໂຊນ ຫຼື ໝວດໝູ່ເພື່ອສຳຫຼວດ.",
-    infoText2: "ລາກເພື່ອຍ້າຍແຜນທີ່. ໃຊ້ສອງນິ້ວ, ສະກຣອນ ຫຼື ກົດປຸ່ມ + ແລະ − ເພື່ອຂະຫຍາຍ/ຍໍ້. ຜູ້ໃຊ້ຄີບອດສາມາດໃຊ້ Tab ແລະ Enter ໄດ້.",
-    infoText3: "ນີ້ແມ່ນແຜນທີ່ຈຳລອງ. ຂໍ້ມູນຮ້ານ ແລະ ເສັ້ນທາງນຳທາງແມ່ນເພື່ອການສາທິດເທົ່ານັ້ນ.",
+    infoText1:
+      "ຄົ້ນຫາຊື່ຮ້ານ ຫຼື ເລກບູທ, ກົດທີ່ບູທເພື່ອເບິ່ງລາຍລະອຽດ ແລະ ໃຊ້ຕົວຕອງໂຊນ ຫຼື ໝວດໝູ່ເພື່ອສຳຫຼວດ.",
+    infoText2:
+      "ລາກເພື່ອຍ້າຍແຜນທີ່. ໃຊ້ສອງນິ້ວ, ສະກຣອນ ຫຼື ກົດປຸ່ມ + ແລະ − ເພື່ອຂະຫຍາຍ/ຍໍ້. ຜູ້ໃຊ້ຄີບອດສາມາດໃຊ້ Tab ແລະ Enter ໄດ້.",
+    infoText3:
+      "ນີ້ແມ່ນແຜນທີ່ຈຳລອງ. ຂໍ້ມູນຮ້ານ ແລະ ເສັ້ນທາງນຳທາງແມ່ນເພື່ອການສາທິດເທົ່ານັ້ນ.",
     gotIt: "ເຂົ້າໃຈແລ້ວ",
     boothCount: (count) => `${count} ບູທ`,
     noBooths: "ບໍ່ພົບບູທ. ກະລຸນາລອງຄົ້ນຫາໃໝ່ ຫຼື ຣີເຊັດຕົວຕອງ.",
     boothsFoundAnnounce: (count) => `ພົບ ${count} ບູທ.`,
-    selectedBoothAnnounce: (name, id, zone) => `ເລືອກ ${name}, ບູທ ${id}, ໂຊນ ${zone}.`,
-    routeNotice: (entrance, zone, name, id) => `ເສັ້ນທາງສາທິດ: ທາງເຂົ້າ ${entrance} → ໂຊນ ${zone} → ${name} (${id}). ຕິດຕາມເສັ້ນປະ. ບໍ່ມີການຕິດຕາມຕຳແໜ່ງຈິງ.`,
-    routeAnnounce: (entrance, id) => `ສະແດງເສັ້ນທາງຈາກ ທາງເຂົ້າ ${entrance} ໄປຫາບູທ ${id}.`,
+    selectedBoothAnnounce: (name, id, zone) =>
+      `ເລືອກ ${name}, ບູທ ${id}, ໂຊນ ${zone}.`,
+    routeNotice: (entrance, zone, name, id) =>
+      `ເສັ້ນທາງສາທິດ: ທາງເຂົ້າ ${entrance} → ໂຊນ ${zone} → ${name} (${id}). ຕິດຕາມເສັ້ນປະ. ບໍ່ມີການຕິດຕາມຕຳແໜ່ງຈິງ.`,
+    routeAnnounce: (entrance, id) =>
+      `ສະແດງເສັ້ນທາງຈາກ ທາງເຂົ້າ ${entrance} ໄປຫາບູທ ${id}.`,
     linkCopied: "ຄັດລອກລິ້ງບູທແລ້ວ.",
     promptCopy: "ຄັດລອກລາຍລະອຽດບູທ:",
     promptCopyLink: "ຄັດລອກລິ້ງບູທນີ້:",
@@ -93,27 +99,39 @@ export const translations = {
     getDirections: "Get Directions",
     shareBooth: "Share Booth",
     infoTitle: "Welcome to Event Map",
-    infoText1: "Search for a shop or booth number, tap a booth to see its details, and use the zone and category filters to explore.",
-    infoText2: "Drag to move the map. Pinch, scroll, or use the + and − buttons to zoom. Keyboard users can focus booths with Tab and open them with Enter.",
-    infoText3: "This is a demonstration venue. Store information and walking routes are illustrative, not live event or emergency guidance.",
+    infoText1:
+      "Search for a shop or booth number, tap a booth to see its details, and use the zone and category filters to explore.",
+    infoText2:
+      "Drag to move the map. Pinch, scroll, or use the + and − buttons to zoom. Keyboard users can focus booths with Tab and open them with Enter.",
+    infoText3:
+      "This is a demonstration venue. Store information and walking routes are illustrative, not live event or emergency guidance.",
     gotIt: "Got it",
     boothCount: (count) => `${count} booths`,
     noBooths: "No booths found. Try another search or reset your filters.",
     boothsFoundAnnounce: (count) => `${count} booths found.`,
-    selectedBoothAnnounce: (name, id, zone) => `Selected ${name}, booth ${id}, Zone ${zone}.`,
-    routeNotice: (entrance, zone, name, id) => `Illustrative route: Entrance ${entrance} → Zone ${zone} → ${name} (${id}). Follow the dashed line. Your live location is not tracked; follow venue signage on site.`,
-    routeAnnounce: (entrance, id) => `Route displayed from Entrance ${entrance} to booth ${id}.`,
+    selectedBoothAnnounce: (name, id, zone) =>
+      `Selected ${name}, booth ${id}, Zone ${zone}.`,
+    routeNotice: (entrance, zone, name, id) =>
+      `Illustrative route: Entrance ${entrance} → Zone ${zone} → ${name} (${id}). Follow the dashed line. Your live location is not tracked; follow venue signage on site.`,
+    routeAnnounce: (entrance, id) =>
+      `Route displayed from Entrance ${entrance} to booth ${id}.`,
     linkCopied: "Booth link copied.",
     promptCopy: "Copy booth details. Host this page online to share a link:",
     promptCopyLink: "Copy this booth link:",
-    footerText: (count) => `EventMap · ${count} booth locations · Demo event directory`,
+    footerText: (count) =>
+      `EventMap · ${count} booth locations · Demo event directory`,
     defaultDesc: "Shop details have not been published for this booth yet.",
     defaultHours: "Hours not published",
-  }
+  },
 };
 
 export function t(key, ...args) {
   const lang = state.lang || "lo";
+  const eventValue = eventInfo?.[key];
+  const customValue = eventValue?.[lang];
+  if (typeof customValue === "string" && customValue.trim()) {
+    return customValue;
+  }
   const val = translations[lang]?.[key] || translations["lo"]?.[key] || key;
   if (typeof val === "function") {
     return val(...args);
@@ -123,12 +141,12 @@ export function t(key, ...args) {
 
 export function getCategoryName(category) {
   const catKeyMap = {
-    "all": "catAll",
+    all: "catAll",
     "Food & Drink": "catFood",
-    "Crafts": "catCrafts",
-    "Fashion": "catFashion",
-    "Plants": "catPlants",
-    "Other": "catOther"
+    Crafts: "catCrafts",
+    Fashion: "catFashion",
+    Plants: "catPlants",
+    Other: "catOther",
   };
   const key = catKeyMap[category];
   return key ? t(key) : category;
@@ -179,7 +197,7 @@ export function updateLanguageUI() {
     }
   });
 
-  uiUpdateCallbacks.forEach(cb => cb());
+  uiUpdateCallbacks.forEach((cb) => cb());
 
   const footer = $("#footer");
   if (footer) {

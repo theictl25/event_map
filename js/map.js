@@ -17,6 +17,7 @@ import {
   updateBoothByIdMap,
 } from "./state.js";
 import { t } from "./i18n.js";
+import { applyBoothOverrides, defaultBoothLayouts } from "./map-layout.js";
 
 export function svgElement(tag, attributes = {}, text) {
   const element = document.createElementNS(SVG_NS, tag);
@@ -54,25 +55,9 @@ export function addBooth(zone, number, x, y, width = 64, height = 44) {
 export function buildMapData(populateCategoryDropdownCb) {
   booths.length = 0;
 
-  ["A", "B", "C"].forEach((zone, zoneIndex) => {
-    for (let number = 1; number <= 12; number++) {
-      const index = number - 1;
-      const block = Math.floor(index / 4);
-      const row = Math.floor((index % 4) / 2);
-      const column = index % 2;
-
-      addBooth(
-        zone,
-        number,
-        145 + zoneIndex * 210 + column * 70,
-        300 + block * 145 + row * 50,
-      );
-    }
+  applyBoothOverrides(defaultBoothLayouts()).forEach((booth) => {
+    addBooth(booth.zone, booth.number, booth.x, booth.y, booth.width, booth.height);
   });
-
-  for (let number = 1; number <= 6; number++) {
-    addBooth("D", number, 155 + (number - 1) * 78, 175);
-  }
 
   updateBoothByIdMap();
   if (populateCategoryDropdownCb) populateCategoryDropdownCb();
@@ -116,6 +101,8 @@ export function setSelectBoothHandler(handler) {
 }
 
 export function renderMap(applyFiltersCb) {
+  $("#map-background")?.setAttribute("width", MAP_WIDTH);
+  $("#map-background")?.setAttribute("height", MAP_HEIGHT);
   $("#zone-labels").replaceChildren();
   $("#booth-layer").replaceChildren();
   $("#gates").replaceChildren();

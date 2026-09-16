@@ -85,9 +85,9 @@ document.addEventListener("DOMContentLoaded", () => {
   initApp();
   // Fetch live booth data from Google Sheets API
   loadShopsFromGoogleSheet(() => {
-    buildMapData(populateCategoryDropdown);
-    renderMap(applyFilters);
-    applyFilters();
+    // This also redraws the map through the registered UI callback and
+    // replaces Information-dialog text with the current event's Sheet data.
+    updateLanguageUI();
 
     const selectedId = state.selected;
     if (boothById.has(selectedId)) {

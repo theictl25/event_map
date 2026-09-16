@@ -334,7 +334,7 @@ export function selectBooth(id, openMobile = false, center = false) {
 
 export function showDirections() {
   if (isBoothsPage) {
-    const url = new URL("./index.html", location.href);
+    const url = new URL("./index.php", location.href);
     url.hash = state.selected;
     url.searchParams.set("directions", "1");
     location.assign(url.href);
@@ -434,6 +434,31 @@ export async function shareBooth() {
 }
 
 export function setupUIEventListeners() {
+  const brand = document.querySelector(".brand");
+  if (brand) {
+    let brandClickCount = 0;
+    let brandClickTimer;
+
+    brand.addEventListener("click", (event) => {
+      // The brand is a normal home-page link. Prevent its immediate navigation
+      // briefly so five consecutive clicks can be detected reliably.
+      event.preventDefault();
+      clearTimeout(brandClickTimer);
+      brandClickCount += 1;
+
+      if (brandClickCount >= 5) {
+        brandClickCount = 0;
+        location.assign("./manager.php");
+        return;
+      }
+
+      // A normal single click still goes to the map after a short delay.
+      brandClickTimer = setTimeout(() => {
+        brandClickCount = 0;
+        location.assign(brand.href);
+      }, 500);
+    });
+  }
   let searchTimer;
   const searchInput = $("#search");
   if (searchInput) {

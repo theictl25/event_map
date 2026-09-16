@@ -50,11 +50,9 @@ export function renderHeader() {
 
   headerContainer.innerHTML = `
     <div class="header-inner">
-      <a class="brand" href="./index.html">
+      <a class="brand" href="./index.php">
         <span class="brand-mark">
-          <svg class="icon" aria-hidden="true">
-            <use href="#i-pin" />
-          </svg>
+          <img src="./assets/default_logo.png" class="logo" />
         </span>
         <div>
           <h1 data-i18n="brandTitle">EVENT MAP</h1>
@@ -73,14 +71,14 @@ export function renderHeader() {
         </div>
 
         <nav class="navigation" aria-label="Main navigation">
-          <a class="nav-button" id="nav-map" href="./index.html">
+          <a class="nav-button" id="nav-map" href="./index.php">
             <svg class="icon" aria-hidden="true">
               <use href="#i-pin"></use>
             </svg>
             <span class="nav-label" data-i18n="navMap">Map</span>
           </a>
 
-          <a class="nav-button" id="nav-booths" href="./booths.html">
+          <a class="nav-button" id="nav-booths" href="./booths.php">
             <svg class="icon" aria-hidden="true">
               <use href="#i-shop"></use>
             </svg>
@@ -131,6 +129,7 @@ export function injectDialogs() {
           This is a demonstration venue. Store information and
           walking routes are illustrative, not live event or emergency guidance.
         </p>
+        
         <form method="dialog">
           <button class="button primary" data-i18n="gotIt">Got it</button>
         </form>
@@ -208,7 +207,7 @@ export function injectMainContent() {
             </defs>
 
             <g id="world">
-              <rect width="800" height="900" fill="#fff" />
+              <rect id="map-background" width="800" height="900" fill="#fff" />
 
               <rect x="245" y="35" width="310" height="75" rx="22" fill="#dfe3e9" stroke="#cbd1da" />
               <text x="400" y="65" text-anchor="middle" font-size="16" font-weight="750" fill="#394457"

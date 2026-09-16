@@ -7,6 +7,13 @@ export function setFeaturedShops(shops) {
 export function getFeaturedShops() {
   return featuredShops;
 }
+
+// Event-level copy used by the Information dialog. Each key may contain
+// language variants, for example: { infoTitle: { lo: "...", en: "..." } }.
+export let eventInfo = {};
+export function setEventInfo(info) {
+  eventInfo = info && typeof info === "object" ? info : {};
+}
 export const booths = [];
 export const boothElements = new Map();
 export let boothById = new Map();
