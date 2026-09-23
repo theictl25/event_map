@@ -1,5 +1,5 @@
-import { $, isBoothsPage } from "./config.js";
-import { state, booths, boothById, eventInfo } from "./state.js";
+import { $, isBoothsPage } from "../shared/config.js";
+import { state, booths, boothById, eventInfo } from "../shared/state.js";
 
 export const translations = {
   lo: {

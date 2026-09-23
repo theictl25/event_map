@@ -1,7 +1,13 @@
-import { $, isBoothsPage, desktopQuery, reducedMotion } from "./config.js";
-import { state, booths, boothElements, boothById } from "./state.js";
+import {
+  $,
+  isBoothsPage,
+  desktopQuery,
+  reducedMotion,
+} from "../shared/config.js";
+import { state, booths, boothElements, boothById } from "../shared/state.js";
 import { t, getCategoryName } from "./i18n.js";
-import { centerBooth, fitMap, routeFromEntrance } from "./map.js";
+import { centerBooth, fitMap } from "./map.js";
+import { findRouteToBooth } from "./map-routing.js";
 
 function getBoothLogo(booth) {
   const defaultLogo = "./assets/default_logo.png";
@@ -344,15 +350,22 @@ export function showDirections() {
   const booth = boothById.get(state.selected);
   if (!booth) return;
 
-  const routes = [routeFromEntrance(booth, 255), routeFromEntrance(booth, 545)];
-  const route = routes.sort((a, b) => a.length - b.length)[0];
+  const route = findRouteToBooth(booth);
+  if (!route) {
+    toast(
+      state.lang === "lo"
+        ? "ຍັງບໍ່ມີທາງເຂົ້າໃນແຜນທີ່"
+        : "Add an entrance in Map Manager first.",
+    );
+    return;
+  }
 
   const routePath = $("#route-path");
   if (routePath) {
     routePath.setAttribute(
       "d",
       route.points
-        .map((point, index) => `${index ? "L" : "M"}${point[0]} ${point[1]}`)
+        .map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`)
         .join(" "),
     );
   }

@@ -1,26 +1,66 @@
 <?php
-
 declare(strict_types=1);
+
 require dirname(__DIR__, 2) . '/lib/auth.php';
 require_admin();
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=UTF-8');
+
+function respond(int $status, array $data): never {
+  http_response_code($status);
+  exit(json_encode($data, JSON_UNESCAPED_UNICODE));
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    exit(json_encode(['error' => 'POST required']));
+  respond(405, ['ok' => false, 'error' => 'POST required']);
 }
-$payload = json_decode(file_get_contents('php://input'), true);
-if (!is_array($payload) || !isset($payload['width'], $payload['height'], $payload['booths'])) {
-    http_response_code(422);
-    exit(json_encode(['error' => 'Invalid layout']));
+
+$layout = json_decode(file_get_contents('php://input'), true);
+if (!is_array($layout) || !isset($layout['width'], $layout['height'], $layout['elements']) || !is_array($layout['elements'])) {
+  respond(422, ['ok' => false, 'error' => 'Invalid map layout']);
 }
+
 $config = app_config();
-$request = curl_init($config['apps_script_write_url']);
-curl_setopt_array($request, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode(['action' => 'saveMapLayout', 'token' => $config['apps_script_write_token'], 'layout' => $payload])]);
-$result = curl_exec($request);
-$status = curl_getinfo($request, CURLINFO_HTTP_CODE);
-curl_close($request);
-if ($result === false || $status < 200 || $status >= 300) {
-    http_response_code(502);
-    exit(json_encode(['error' => 'Could not save map layout']));
+if (empty($config['apps_script_write_url']) || str_starts_with($config['apps_script_write_url'], 'PASTE_')) {
+  respond(500, ['ok' => false, 'error' => 'Apps Script URL is not configured']);
 }
-echo $result;
+
+// Google Apps Script URLs always use HTTPS. Without OpenSSL, PHP cannot
+// create that secure connection and file_get_contents() only reports a vague
+// "Could not contact" error.
+if (!extension_loaded('openssl')) {
+  respond(500, [
+    'ok' => false,
+    'error' => 'PHP OpenSSL is not enabled. Configure Five Server/PHP to use a PHP installation with OpenSSL.',
+  ]);
+}
+
+$body = json_encode([
+  'action' => 'saveMapLayout',
+  'token' => $config['apps_script_write_token'] ?? '',
+  'layout' => $layout,
+], JSON_UNESCAPED_UNICODE);
+
+// stream_context works in ordinary PHP installations, including this local
+// runtime where the optional cURL extension is not enabled.
+$context = stream_context_create(['http' => [
+  'method' => 'POST',
+  'header' => "Content-Type: application/json\r\nAccept: application/json\r\n",
+  'content' => $body,
+  'timeout' => 20,
+  'ignore_errors' => true,
+]]);
+
+$response = @file_get_contents($config['apps_script_write_url'], false, $context);
+if ($response === false) {
+  respond(502, ['ok' => false, 'error' => 'Could not contact Google Apps Script']);
+}
+
+$decoded = json_decode($response, true);
+if (!is_array($decoded)) {
+  respond(502, ['ok' => false, 'error' => 'Apps Script returned an invalid response']);
+}
+if (empty($decoded['ok'])) {
+  respond(502, ['ok' => false, 'error' => $decoded['error'] ?? 'Google Sheets did not save the map']);
+}
+
+respond(200, ['ok' => true]);

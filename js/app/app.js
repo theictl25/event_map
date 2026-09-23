@@ -1,5 +1,5 @@
-import { $ } from "./config.js";
-import { boothById, state } from "./state.js";
+import { $ } from "../shared/config.js";
+import { boothById, state } from "../shared/state.js";
 import {
   injectIconsSVG,
   renderHeader,
@@ -19,7 +19,7 @@ import {
   setSelectBoothHandler,
   setupMapInteractions,
 } from "./map.js";
-import { loadShopsFromGoogleSheet } from "./api.js";
+import { loadShopsFromGoogleSheet } from "../shared/api.js";
 import {
   populateCategoryDropdown,
   applyFilters,
@@ -69,7 +69,9 @@ function initApp() {
 
   // 5. Select default booth or initial hash booth
   const initialId = location.hash.slice(1).toUpperCase();
-  const defaultBooth = boothById.has(initialId);
+  const defaultBooth = boothById.has(initialId)
+    ? initialId
+    : boothById.keys().next().value;
   selectBooth(defaultBooth);
 
   // 6. Check for URL search params (e.g. directions=1)
@@ -88,6 +90,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // This also redraws the map through the registered UI callback and
     // replaces Information-dialog text with the current event's Sheet data.
     updateLanguageUI();
+    // The remote response may contain a map with different boundaries.
+    // Refit after it has replaced the initial local layout.
+    fitMap();
 
     const selectedId = state.selected;
     if (boothById.has(selectedId)) {

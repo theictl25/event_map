@@ -5,6 +5,6 @@
 return [
   'admin_username' => 'admin',
   'admin_password_hash' => '$2y$12$qCmtusGXe7dvWfQwSeOHEeRVadvemvecqyD.RtwthlV65b4YGreMq',
-  'apps_script_write_url' => 'https://script.google.com/macros/s/AKfycbwrm_nQ26NxwlsvD0KW7OQK_H5VqfAhvfRGCWxdfwqn2xI7bbsrJzy2vaNbR28Ws3v-/exec',
+  'apps_script_write_url' => 'https://script.google.com/macros/s/AKfycbyp6sGnYVMorD19sv47KpBCKQ5mu1DlQbSKH-EOhF8jr3r4Waz2AOPMwDzG-DJ7mktO/exec',
   'apps_script_write_token' => 'ictlaoPassw0rd1',
 ];

@@ -1,4 +1,4 @@
-import { $, isBoothsPage } from "./config.js";
+import { $, isBoothsPage } from "../shared/config.js";
 
 /**
  * Dynamically injects shared SVG Icons into body to eliminate duplication
@@ -63,7 +63,7 @@ export function renderHeader() {
       <div class="header-actions">
         <div class="lang-switcher" role="group" aria-label="Language Selector">
           <button type="button" class="lang-btn active" data-lang="lo" aria-label="ພາສາລາວ" aria-pressed="true">
-            <span class="flag-icon">Lao</span>
+            <span class="flag-icon">ລາວ</span>
           </button>
           <button type="button" class="lang-btn" data-lang="en" aria-label="English" aria-pressed="false">
             <span class="flag-icon">English</span>
@@ -209,26 +209,8 @@ export function injectMainContent() {
             <g id="world">
               <rect id="map-background" width="800" height="900" fill="#fff" />
 
-              <rect x="245" y="35" width="310" height="75" rx="22" fill="#dfe3e9" stroke="#cbd1da" />
-              <text x="400" y="65" text-anchor="middle" font-size="16" font-weight="750" fill="#394457"
-                id="svg-main-stage" data-i18n="mainStage">MAIN STAGE</text>
-              <text x="400" y="90" text-anchor="middle" font-size="22" fill="#59657a">♧</text>
-
-              <path d="M45 125H755" stroke="#f0f2f6" />
-
-              <!-- Aisles -->
-              <g fill="#fafbfc">
-                <rect x="93" y="235" width="22" height="573" rx="11" />
-                <rect x="303" y="235" width="22" height="475" rx="11" />
-                <rect x="513" y="235" width="22" height="475" rx="11" />
-                <rect x="723" y="235" width="22" height="573" rx="11" />
-                <rect x="94" y="797" width="651" height="22" rx="11" />
-              </g>
-
-              <text x="104" y="480" text-anchor="middle" font-size="9" fill="#a4acb9"
-                transform="rotate(-90 104 480)" id="svg-walkway" data-i18n="walkway">WALKWAY</text>
-
               <g id="zone-labels"></g>
+              <g id="map-elements"></g>
               <g id="booth-layer"></g>
 
               <path id="route-path" d="" fill="none" stroke="#991b1e" stroke-width="4" stroke-dasharray="7 7"

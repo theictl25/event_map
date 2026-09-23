@@ -16,7 +16,7 @@
     <header class="header"></header>
     <main class="layout"></main>
     <footer id="footer"></footer>
-    <script type="module" src="js/app.js"></script>
+    <script type="module" src="js/app/app.js"></script>
 </body>
 
 </html>

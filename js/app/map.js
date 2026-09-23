@@ -2,12 +2,10 @@ import {
   $,
   SVG_NS,
   zones,
-  MAP_WIDTH,
-  MAP_HEIGHT,
   MAP_CONFIG,
   desktopQuery,
   reducedMotion,
-} from "./config.js";
+} from "../shared/config.js";
 import {
   state,
   booths,
@@ -15,9 +13,14 @@ import {
   boothById,
   featuredShops,
   updateBoothByIdMap,
-} from "./state.js";
+} from "../shared/state.js";
 import { t } from "./i18n.js";
-import { applyBoothOverrides, defaultBoothLayouts } from "./map-layout.js";
+import { getMapLayout } from "../shared/map-layout.js";
+
+function mapSize() {
+  const layout = getMapLayout();
+  return { width: layout.width, height: layout.height };
+}
 
 export function svgElement(tag, attributes = {}, text) {
   const element = document.createElementNS(SVG_NS, tag);
@@ -28,7 +31,15 @@ export function svgElement(tag, attributes = {}, text) {
   return element;
 }
 
-export function addBooth(zone, number, x, y, width = 64, height = 44) {
+export function addBooth(
+  zone,
+  number,
+  x,
+  y,
+  width = 64,
+  height = 44,
+  shape = "rectangle",
+) {
   const id = zone + String(number).padStart(2, "0");
   const shop = featuredShops[id];
   const defaultName = state.lang === "lo" ? `ບູທ ${id}` : `Booth ${id}`;
@@ -41,6 +52,7 @@ export function addBooth(zone, number, x, y, width = 64, height = 44) {
     y,
     width,
     height,
+    shape,
     name: shop?.name || defaultName,
     category: shop?.category || "Other",
     logo: String(shop?.logo ?? "").trim() || DEFAULT_LOGO,
@@ -55,16 +67,75 @@ export function addBooth(zone, number, x, y, width = 64, height = 44) {
 export function buildMapData(populateCategoryDropdownCb) {
   booths.length = 0;
 
-  applyBoothOverrides(defaultBoothLayouts()).forEach((booth) => {
-    addBooth(booth.zone, booth.number, booth.x, booth.y, booth.width, booth.height);
-  });
+  getMapLayout()
+    .elements.filter((element) => element.type === "booth")
+    .forEach((booth) => {
+      const id = booth.boothId || booth.id;
+      const zone = booth.zone || id.charAt(0);
+      const number = Number(id.replace(/\D/g, "")) || 1;
+      addBooth(
+        zone,
+        number,
+        booth.x,
+        booth.y,
+        booth.width,
+        booth.height,
+        booth.shape,
+      );
+    });
 
   updateBoothByIdMap();
   if (populateCategoryDropdownCb) populateCategoryDropdownCb();
 }
 
+function zoneStyle(zone) {
+  const fallback = zones[zone] || {
+    background: "#eff2f6",
+    border: "#94a3b8",
+    text: "#334155",
+  };
+  const color = getMapLayout().zoneColors?.[zone];
+  return color ? { ...fallback, background: color } : fallback;
+}
+
+function mapShape(item, attributes) {
+  const centerX = item.x + item.width / 2;
+  const centerY = item.y + item.height / 2;
+  if (item.shape === "circle") {
+    return svgElement("ellipse", {
+      ...attributes, cx: centerX, cy: centerY, rx: item.width / 2, ry: item.height / 2,
+    });
+  }
+  if (item.shape === "triangle") {
+    return svgElement("polygon", {
+      ...attributes,
+      points: `${centerX},${item.y} ${item.x + item.width},${item.y + item.height} ${item.x},${item.y + item.height}`,
+    });
+  }
+  if (item.shape === "hexagon") {
+    return svgElement("polygon", {
+      ...attributes,
+      points: `${item.x + item.width * 0.25},${item.y} ${item.x + item.width * 0.75},${item.y} ${item.x + item.width},${centerY} ${item.x + item.width * 0.75},${item.y + item.height} ${item.x + item.width * 0.25},${item.y + item.height} ${item.x},${centerY}`,
+    });
+  }
+  return svgElement("rect", {
+    ...attributes, x: item.x, y: item.y, width: item.width, height: item.height, rx: 8,
+  });
+}
+
+function appendTree(group, item) {
+  const centerX = item.x + item.width / 2;
+  const crown = Math.min(item.width, item.height) * 0.24;
+  group.append(
+    svgElement("rect", { x: centerX - crown * 0.3, y: item.y + item.height * 0.58, width: crown * 0.6, height: item.height * 0.3, rx: 2, fill: "#8b5a2b" }),
+    svgElement("circle", { cx: centerX, cy: item.y + item.height * 0.42, r: crown, fill: item.color }),
+    svgElement("circle", { cx: centerX - crown * 0.62, cy: item.y + item.height * 0.54, r: crown * 0.78, fill: item.color }),
+    svgElement("circle", { cx: centerX + crown * 0.62, cy: item.y + item.height * 0.54, r: crown * 0.78, fill: item.color }),
+  );
+}
+
 export function addZoneLabel(zone, x, y) {
-  const color = zones[zone];
+  const color = zoneStyle(zone);
   const group = svgElement("g");
   const labelText = state.lang === "lo" ? `ໂຊນ ${zone}` : `Zone ${zone}`;
 
@@ -101,23 +172,52 @@ export function setSelectBoothHandler(handler) {
 }
 
 export function renderMap(applyFiltersCb) {
-  $("#map-background")?.setAttribute("width", MAP_WIDTH);
-  $("#map-background")?.setAttribute("height", MAP_HEIGHT);
+  const size = mapSize();
+  $("#map-background")?.setAttribute("width", size.width);
+  $("#map-background")?.setAttribute("height", size.height);
   $("#zone-labels").replaceChildren();
+  $("#map-elements").replaceChildren();
   $("#booth-layer").replaceChildren();
   $("#gates").replaceChildren();
   $("#zone-filters").replaceChildren();
   boothElements.clear();
 
-  addZoneLabel("D", 400, 155);
-  addZoneLabel("A", 212, 277);
-  addZoneLabel("B", 422, 277);
-  addZoneLabel("C", 632, 277);
+  getMapLayout()
+    .elements.filter((item) => item.type !== "booth")
+    .forEach((item) => {
+      const group = svgElement("g", { class: `map-element map-${item.type}` });
+      if (item.type === "tree") {
+        appendTree(group, item);
+      } else {
+        group.append(mapShape(item, { fill: item.color, stroke: "#94a3b8" }));
+      }
+      const label =
+        item.type === "tree"
+          ? ""
+          : (state.lang === "lo" ? item.label_lo : item.label_en) ||
+            item.label_en ||
+            item.label_lo ||
+            item.type;
+      group.append(
+        svgElement(
+          "text",
+          {
+            x: item.x + item.width / 2,
+            y: item.y + item.height / 2 + 4,
+            "text-anchor": "middle",
+            "font-size": 12,
+            fill: "#334155",
+          },
+          label,
+        ),
+      );
+      $("#map-elements").append(group);
+    });
 
   const zoneTextStr = state.lang === "lo" ? "ໂຊນ" : "Zone";
 
   booths.forEach((booth) => {
-    const color = zones[booth.zone];
+    const color = zoneStyle(booth.zone);
     const group = svgElement("g", {
       class: "booth",
       role: "button",
@@ -128,15 +228,7 @@ export function renderMap(applyFiltersCb) {
     });
 
     group.append(
-      svgElement("rect", {
-        x: booth.x,
-        y: booth.y,
-        width: booth.width,
-        height: booth.height,
-        rx: 8,
-        fill: color.background,
-        stroke: color.border,
-      }),
+      mapShape(booth, { fill: color.background, stroke: color.border }),
       svgElement(
         "text",
         {
@@ -163,55 +255,57 @@ export function renderMap(applyFiltersCb) {
     $("#booth-layer").append(group);
   });
 
-  [
-    { x: 255, key: "entrance1", entry: true },
-    { x: 355, key: "exit1", entry: false },
-    { x: 545, key: "entrance2", entry: true },
-    { x: 645, key: "exit2", entry: false },
-  ].forEach((gate) => {
-    const label = t(gate.key);
-    const group = svgElement("g", {
-      "aria-label": label,
-      role: "img",
+  /* Legacy gates are intentionally disabled: entrances/exits now come from MapLayout. */
+  if (false)
+    [
+      { x: 255, key: "entrance1", entry: true },
+      { x: 355, key: "exit1", entry: false },
+      { x: 545, key: "entrance2", entry: true },
+      { x: 645, key: "exit2", entry: false },
+    ].forEach((gate) => {
+      const label = t(gate.key);
+      const group = svgElement("g", {
+        "aria-label": label,
+        role: "img",
+      });
+
+      group.append(
+        svgElement("rect", {
+          x: gate.x - 43,
+          y: 837,
+          width: 86,
+          height: 53,
+          rx: 14,
+          fill: "#fff",
+          stroke: "#e0e5ee",
+        }),
+        svgElement(
+          "text",
+          {
+            x: gate.x,
+            y: 859,
+            "text-anchor": "middle",
+            "font-size": 26,
+            fill: gate.entry ? "#00996b" : "#ed3660",
+          },
+          gate.entry ? "↑" : "↓",
+        ),
+        svgElement(
+          "text",
+          {
+            x: gate.x,
+            y: 878,
+            "text-anchor": "middle",
+            "font-size": 10,
+            "font-weight": 650,
+            fill: "#465269",
+          },
+          label,
+        ),
+      );
+
+      $("#gates").append(group);
     });
-
-    group.append(
-      svgElement("rect", {
-        x: gate.x - 43,
-        y: 837,
-        width: 86,
-        height: 53,
-        rx: 14,
-        fill: "#fff",
-        stroke: "#e0e5ee",
-      }),
-      svgElement(
-        "text",
-        {
-          x: gate.x,
-          y: 859,
-          "text-anchor": "middle",
-          "font-size": 26,
-          fill: gate.entry ? "#00996b" : "#ed3660",
-        },
-        gate.entry ? "↑" : "↓",
-      ),
-      svgElement(
-        "text",
-        {
-          x: gate.x,
-          y: 878,
-          "text-anchor": "middle",
-          "font-size": 10,
-          "font-weight": 650,
-          fill: "#465269",
-        },
-        label,
-      ),
-    );
-
-    $("#gates").append(group);
-  });
 
   ["all", ...Object.keys(zones)].forEach((zone) => {
     const button = document.createElement("button");
@@ -264,8 +358,9 @@ function constrain() {
   const width = viewport.clientWidth;
   const height = viewport.clientHeight;
 
-  const worldWidth = MAP_WIDTH * state.scale;
-  const worldHeight = MAP_HEIGHT * state.scale;
+  const size = mapSize();
+  const worldWidth = size.width * state.scale;
+  const worldHeight = size.height * state.scale;
 
   if (worldWidth <= width) {
     state.x = (width - worldWidth) / 2;
@@ -373,11 +468,12 @@ export function fitMap() {
   const height = viewport.clientHeight;
   if (!width || !height) return;
 
-  state.minScale = Math.min(width / MAP_WIDTH, height / MAP_HEIGHT) * 0.95;
+  const size = mapSize();
+  state.minScale = Math.min(width / size.width, height / size.height) * 0.95;
   state.maxScale = state.minScale * MAP_CONFIG.maxScaleMultiplier;
   state.scale = state.minScale;
-  state.x = (width - MAP_WIDTH * state.scale) / 2;
-  state.y = (height - MAP_HEIGHT * state.scale) / 2;
+  state.x = (width - size.width * state.scale) / 2;
+  state.y = (height - size.height * state.scale) / 2;
 
   paint();
 }
@@ -416,51 +512,6 @@ export function zoomAt(factor, pointerX, pointerY) {
   state.y = pointerY - mapY * newScale;
 
   paint();
-}
-
-export function routeFromEntrance(booth, entranceX) {
-  const points = [
-    [entranceX, 837],
-    [entranceX, 808],
-  ];
-
-  if (booth.zone === "E") {
-    const centerX = booth.x + booth.width / 2;
-    points.push([centerX, 808], [centerX, booth.y + booth.height + 4]);
-  } else if (booth.zone === "D") {
-    const aisleX = entranceX < 400 ? 104 : 734;
-    const centerX = booth.x + booth.width / 2;
-    points.push(
-      [aisleX, 808],
-      [aisleX, 240],
-      [centerX, 240],
-      [centerX, booth.y + booth.height + 4],
-    );
-  } else {
-    const number = Number(booth.id.slice(1));
-    const isLeft = number % 2 === 1;
-    const zoneIndex = ["A", "B", "C"].indexOf(booth.zone);
-    const aisleX = 104 + zoneIndex * 210 + (isLeft ? 0 : 210);
-    const centerY = booth.y + booth.height / 2;
-    const edgeX = isLeft ? booth.x - 4 : booth.x + booth.width + 4;
-
-    const outerX = entranceX < 400 ? 104 : 734;
-    points.push(
-      [outerX, 808],
-      [outerX, 708],
-      [aisleX, 708],
-      [aisleX, centerY],
-      [edgeX, centerY],
-    );
-  }
-
-  const length = points.reduce((total, point, index) => {
-    if (!index) return total;
-    const previous = points[index - 1];
-    return total + Math.hypot(point[0] - previous[0], point[1] - previous[1]);
-  }, 0);
-
-  return { points, length, entrance: entranceX === 255 ? 1 : 2 };
 }
 
 export function setupMapInteractions() {
@@ -632,8 +683,7 @@ export function setupMapInteractions() {
       // map is already visible. Once the user zooms in, the same gesture
       // pans the map instead.
       const shouldScrollPage =
-        event.pointerType === "touch" &&
-        state.scale <= state.minScale + 0.0001;
+        event.pointerType === "touch" && state.scale <= state.minScale + 0.0001;
 
       gesture = {
         type: shouldScrollPage ? "page-scroll" : "pan",
@@ -975,7 +1025,8 @@ export function setupMapInteractions() {
 
     const height = viewport.clientHeight;
 
-    state.minScale = Math.min(width / MAP_WIDTH, height / MAP_HEIGHT) * 0.95;
+    const size = mapSize();
+    state.minScale = Math.min(width / size.width, height / size.height) * 0.95;
 
     state.maxScale = state.minScale * MAP_CONFIG.maxScaleMultiplier;
 

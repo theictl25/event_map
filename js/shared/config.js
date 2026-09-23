@@ -4,7 +4,7 @@ export const SVG_NS = "http://www.w3.org/2000/svg";
 export const desktopQuery = matchMedia("(min-width: 1100px)");
 export const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 export const GOOGLE_SHEET_API =
-  "https://script.google.com/macros/s/AKfycbwrm_nQ26NxwlsvD0KW7OQK_H5VqfAhvfRGCWxdfwqn2xI7bbsrJzy2vaNbR28Ws3v-/exec";
+  "https://script.google.com/macros/s/AKfycbyp6sGnYVMorD19sv47KpBCKQ5mu1DlQbSKH-EOhF8jr3r4Waz2AOPMwDzG-DJ7mktO/exec";
 
 export const zones = {
   A: { background: "#ffebee", border: "#ffbac4", text: "#a32847" },
@@ -13,9 +13,9 @@ export const zones = {
   D: { background: "#e1f2ff", border: "#a7dcff", text: "#07628e" },
 };
 
-import { getMapSettings } from "./map-layout.js";
+import { getMapLayout } from "./map-layout.js";
 
-const mapSettings = getMapSettings();
+const mapSettings = getMapLayout();
 export const MAP_WIDTH = mapSettings.width;
 export const MAP_HEIGHT = mapSettings.height;
 

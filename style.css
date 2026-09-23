@@ -650,19 +650,25 @@ p {
   cursor: pointer;
 }
 
-.booth rect {
+.booth rect,
+.booth ellipse,
+.booth polygon {
   transition:
     fill 0.15s,
     stroke 0.15s,
     opacity 0.15s;
 }
 
-.booth:hover rect {
+.booth:hover rect,
+.booth:hover ellipse,
+.booth:hover polygon {
   stroke: var(--brand);
   stroke-width: 2;
 }
 
-.booth.selected rect {
+.booth.selected rect,
+.booth.selected ellipse,
+.booth.selected polygon {
   fill: var(--brand);
   stroke: #741417;
   stroke-width: 2;
@@ -694,7 +700,9 @@ p {
   font-weight: 750;
 }
 
-.booth.match:not(.selected) rect {
+.booth.match:not(.selected) rect,
+.booth.match:not(.selected) ellipse,
+.booth.match:not(.selected) polygon {
   stroke: var(--brand);
   stroke-width: 2.5;
 }
@@ -707,7 +715,9 @@ p {
   outline: none;
 }
 
-.booth:focus-visible rect {
+.booth:focus-visible rect,
+.booth:focus-visible ellipse,
+.booth:focus-visible polygon {
   stroke: #182132;
   stroke-width: 3;
 }
