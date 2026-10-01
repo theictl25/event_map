@@ -23,7 +23,7 @@ export const ELEMENT_TYPES = {
   walkway: { color: "#f1f5f9", width: 220, height: 45 },
   entrance: { color: "#dcfce7", width: 90, height: 42 },
   exit: { color: "#ffe4e6", width: 90, height: 42 },
-  tree: { color: "#bbf7d0", width: 44, height: 44 },
+  tree: { color: "#2A7E19", width: 44, height: 44 },
   stage: { color: "#dbeafe", width: 220, height: 75 },
   label: { color: "#fef3c7", width: 140, height: 36 },
   other: { color: "#e9d5ff", width: 90, height: 55 },
@@ -84,7 +84,7 @@ export function defaultMapLayout() {
   return {
     width: DEFAULT_MAP_WIDTH,
     height: DEFAULT_MAP_HEIGHT,
-    gridSize: 25,
+    gridSize: 5,
     zoneColors: { ...DEFAULT_ZONE_COLORS },
     elements: [
       {
@@ -143,7 +143,10 @@ function normalizeZoneColors(sourceColors, elements) {
   const colors = { ...DEFAULT_ZONE_COLORS };
   Object.entries(sourceColors || {}).forEach(([zone, color]) => {
     const key = String(zone).trim().toUpperCase();
-    if (/^[A-Z0-9_-]{1,24}$/.test(key) && /^#[0-9a-f]{6}$/i.test(String(color))) {
+    if (
+      /^[A-Z0-9_-]{1,24}$/.test(key) &&
+      /^#[0-9a-f]{6}$/i.test(String(color))
+    ) {
       colors[key] = String(color);
     }
   });
@@ -177,6 +180,12 @@ function normalizeElement(element, index) {
     width: positiveNumber(element?.width, defaults.width),
     height: positiveNumber(element?.height, defaults.height),
     color: String(element?.color || defaults.color),
+    fontSize: Math.min(72, Math.max(6, positiveNumber(element?.fontSize, 12))),
+    textColor: /^#[0-9a-f]{6}$/i.test(String(element?.textColor || ""))
+      ? String(element.textColor)
+      : type === "booth"
+        ? "#425066"
+        : "#334155",
     shape: ELEMENT_SHAPES.includes(element?.shape)
       ? element.shape
       : "rectangle",
@@ -220,6 +229,35 @@ export function getMapLayout() {
   return activeLayout;
 }
 
+export function compactMapLayout(layout) {
+  const normalized = normalizeMapLayout(layout);
+  return {
+    width: normalized.width,
+    height: normalized.height,
+    gridSize: normalized.gridSize,
+    zoneColors: normalized.zoneColors,
+    elements: normalized.elements.map((el) => {
+      const item = { id: el.id, type: el.type };
+      if (el.boothId) item.boothId = el.boothId;
+      if (el.zone) item.zone = el.zone;
+      if (el.label_lo) item.label_lo = el.label_lo;
+      if (el.label_en) item.label_en = el.label_en;
+      item.x = Math.round(Number(el.x) * 10) / 10;
+      item.y = Math.round(Number(el.y) * 10) / 10;
+      item.width = Math.round(Number(el.width) * 10) / 10;
+      item.height = Math.round(Number(el.height) * 10) / 10;
+      if (el.color) item.color = el.color;
+      if (el.fontSize && el.fontSize !== 12) item.fontSize = el.fontSize;
+      const defaultTextColor = el.type === "booth" ? "#425066" : "#334155";
+      if (el.textColor && el.textColor.toLowerCase() !== defaultTextColor) {
+        item.textColor = el.textColor;
+      }
+      if (el.shape && el.shape !== "rectangle") item.shape = el.shape;
+      return item;
+    }),
+  };
+}
+
 /**
  * Updates the shared in-memory layout. Set persist=true only after an editor
  * action is intentionally saved locally.
@@ -228,7 +266,7 @@ export function setMapLayout(layout, persist = false) {
   activeLayout = normalizeMapLayout(layout);
 
   if (persist) {
-    localStorage.setItem(MAP_SETTINGS_KEY, JSON.stringify(activeLayout));
+    localStorage.setItem(MAP_SETTINGS_KEY, JSON.stringify(compactMapLayout(activeLayout)));
   }
 
   return activeLayout;

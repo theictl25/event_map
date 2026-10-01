@@ -14,6 +14,15 @@ export let eventInfo = {};
 export function setEventInfo(info) {
   eventInfo = info && typeof info === "object" ? info : {};
 }
+
+export let event = {};
+export function setEvent(data) {
+  event = data && typeof data === "object" ? data : {};
+}
+export function getEvent() {
+  return event;
+}
+
 export const booths = [];
 export const boothElements = new Map();
 export let boothById = new Map();

@@ -1,3 +1,13 @@
+<?php
+require __DIR__ . '/lib/auth.php';
+
+// Public pages never keep Manager access active. Returning to Manager after
+// visiting the map will therefore require a fresh login.
+if (!empty($_SESSION['eventmap_admin'])) {
+    $_SESSION = [];
+    session_destroy();
+}
+?>
 <!doctype html>
 <html lang="en">
 
@@ -17,6 +27,7 @@
     <main class="layout"></main>
     <footer id="footer"></footer>
     <script type="module" src="js/app/app.js"></script>
+
 </body>
 
 </html>

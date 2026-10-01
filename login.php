@@ -4,7 +4,7 @@ $error = '';
 $config = app_config();
 if (!is_admin_configured($config)) {
   http_response_code(500);
-  $error = 'ยังไม่ได้ตั้งค่า Admin กรุณาแก้ admin_username และ admin_password_hash ใน config.php ก่อน';
+  $error = 'Admin not yet configured. Please update admin_username and admin_password_hash in config.php first.';
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $user = $_POST['username'] ?? '';
@@ -13,10 +13,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (hash_equals($config['admin_username'], $user) && password_verify($password, $config['admin_password_hash'])) {
       session_regenerate_id(true);
       $_SESSION['eventmap_admin'] = true;
-      header('Location: ' . app_url('manager.php'));
+      // Commit the new session before redirecting. This ensures the first API
+      // request from Manager receives the same authenticated session cookie.
+      session_write_close();
+      header('Location: ' . app_url('manager.php'), true, 303);
       exit;
     }
-    $error = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+    $error = 'Incorrect username or password.';
   }
 }
 ?>

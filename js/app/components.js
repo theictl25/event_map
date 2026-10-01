@@ -1,4 +1,29 @@
 import { $, isBoothsPage } from "../shared/config.js";
+import { getEvent, state } from "../shared/state.js";
+export function renderEvent() {
+  const event = getEvent();
+  const lang = state.lang;
+
+  const eventName = event?.event_name?.[lang] || "EVENT MAP";
+  const eventDate = event?.event_date?.[lang] || "";
+
+  const nameElement = $("#event-name");
+  const dateElement = $("#event-date");
+
+  if (nameElement) {
+    nameElement.textContent = eventName;
+  }
+
+  if (dateElement) {
+    dateElement.textContent = eventDate;
+  }
+
+  console.log("RENDER EVENT:", {
+    lang,
+    eventName,
+    eventDate,
+  });
+}
 
 /**
  * Dynamically injects shared SVG Icons into body to eliminate duplication
@@ -55,8 +80,8 @@ export function renderHeader() {
           <img src="./assets/default_logo.png" class="logo" />
         </span>
         <div>
-          <h1 data-i18n="brandTitle">EVENT MAP</h1>
-          <p data-i18n="brandSubtitle">Find Your Favorite Booth</p>
+          <h1 id="event-name">EVENT MAP</h1>
+<p id="event-date"></p>
         </div>
       </a>
 
@@ -191,8 +216,11 @@ export function injectMainContent() {
           <option value="Plants" data-i18n="catPlants">Plants</option>
           <option value="Other" data-i18n="catOther">Other</option>
         </select>
+        <button class="reset-filter" id="reset-all" data-i18n="resetFilter" >
+         Reset Filter
+        </button>
       </div>
-
+      
       <div class="zone-filters" id="zone-filters" aria-label="Filter by zone"></div>
 
       <div class="panel map-shell">
@@ -207,7 +235,7 @@ export function injectMainContent() {
             </defs>
 
             <g id="world">
-              <rect id="map-background" width="800" height="900" fill="#fff" />
+              <rect id="map-background" width="800" height="900" fill="#ffffff" />
 
               <g id="zone-labels"></g>
               <g id="map-elements"></g>
@@ -226,6 +254,10 @@ export function injectMainContent() {
               <g id="gates"></g>
             </g>
           </svg>
+          <div class="map-loading" id="map-loading" role="status" aria-live="polite" hidden>
+            <span class="map-loading-spinner" aria-hidden="true"></span>
+            <span data-i18n="mapLoading">Loading map from Google Sheet…</span>
+          </div>
         </div>
 
 

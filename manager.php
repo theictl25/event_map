@@ -39,7 +39,6 @@ require_admin();
             </div>
         </div>
     </header>
-
     <main class="manager">
         <section class="panel manager-settings" aria-labelledby="map-boundaries-title">
             <h2 id="map-boundaries-title" data-manager-i18n="mapBounds">Map boundaries</h2>
@@ -56,11 +55,6 @@ require_admin();
                 <span data-manager-i18n="grid">Grid</span>
                 <input id="grid-size" type="number" min="5">
             </label>
-            <fieldset class="manager-zone-colors">
-                <legend data-manager-i18n="zoneColors">Zone colors</legend>
-                <div id="zone-color-list"></div>
-            </fieldset>
-
             <button class="button primary" id="save-map" type="button" data-manager-i18n="saveForEveryone">
                 Save for everyone
             </button>
@@ -122,6 +116,7 @@ require_admin();
                                 Center selected
                             </button>
                             <button class="button" id="undo-map" type="button" data-manager-i18n="undo">Undo</button>
+                            <button class="button" id="redo-map" type="button" data-manager-i18n="forward">Forward</button>
                             <button class="button" id="preview-map" type="button" data-manager-i18n="previewMap">Preview</button>
                             <button class="button" id="export-map" type="button" data-manager-i18n="exportMap">Export PNG</button>
                         </div>

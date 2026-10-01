@@ -126,8 +126,8 @@ export function renderList(results) {
     card.classList.toggle("selected", booth.id === state.selected);
     card.setAttribute("aria-pressed", String(booth.id === state.selected));
 
-    const zoneText =
-      state.lang === "lo" ? `ໂຊນ ${booth.zone}` : `Zone ${booth.zone}`;
+    const boothText =
+      state.lang === "lo" ? `ບູທ ${booth.id}` : `Booth ${booth.id}`;
     const categoryName = getCategoryName(booth.category);
 
     card.innerHTML = `
@@ -145,7 +145,7 @@ export function renderList(results) {
           ${escapeHTML(booth.name)}
         </span>
         <span class="shop-meta" style="display:block">
-          ${zoneText} · ${escapeHTML(categoryName)}
+          ${boothText} · ${escapeHTML(categoryName)}
         </span>
       </span>
     `;
@@ -161,6 +161,10 @@ export function renderList(results) {
 export function applyFilters(centerSearch = false) {
   const results = filteredBooths();
   const ids = new Set(results.map((booth) => booth.id));
+  const categorySelect = $("#category");
+  if (categorySelect) {
+    categorySelect.classList.toggle("has-selection", state.category !== "all");
+  }
 
   renderList(results);
 
@@ -176,7 +180,7 @@ export function applyFilters(centerSearch = false) {
       element.classList.toggle("muted-booth", !ids.has(booth.id));
       element.classList.toggle(
         "match",
-        Boolean(state.query) && ids.has(booth.id),
+        (Boolean(state.query) || state.category !== "all") && ids.has(booth.id),
       );
     }
   });
@@ -211,7 +215,7 @@ export function resetFilters() {
 
 export function detailHTML(booth) {
   const logo = getBoothLogo(booth);
-  const zoneText =
+  const boothZone =
     state.lang === "lo" ? `ໂຊນ ${booth.zone}` : `Zone ${booth.zone}`;
   const boothText =
     state.lang === "lo" ? `ບູທ ${booth.id}` : `Booth ${booth.id}`;
@@ -253,7 +257,8 @@ export function detailHTML(booth) {
       <div class="detail-facts">
         <div class="fact">
           ${icon("pin")}
-          <span><strong>${zoneText}</strong> | ${boothText}</span>
+          <span><strong>${boothZone}</strong></span>/
+          <span><strong>${boothText}</strong></span>
         </div>
         <div class="fact">
           ${icon("clock")}
@@ -332,6 +337,46 @@ export function selectBooth(id, openMobile = false, center = false) {
   try {
     const url = new URL(location.href);
     url.hash = id;
+    history.replaceState(null, "", url);
+  } catch {
+    // Local file execution safeguard
+  }
+}
+
+export function clearSelectedBooth() {
+  if (!state.selected) return;
+
+  state.selected = null;
+
+  boothElements.forEach((element) => {
+    element.classList.remove("selected");
+    element.setAttribute("aria-pressed", "false");
+  });
+
+  document.querySelectorAll(".shop-card").forEach((card) => {
+    card.classList.remove("selected");
+    card.setAttribute("aria-pressed", "false");
+  });
+
+  const pin = $("#selection-pin");
+  if (pin) pin.setAttribute("hidden", "");
+
+  const desktopDetail = $("#desktop-detail");
+  const mobileDetail = $("#mobile-detail");
+  if (desktopDetail) desktopDetail.replaceChildren();
+  if (mobileDetail) mobileDetail.replaceChildren();
+
+  const detailDialog = $("#detail-dialog");
+  if (detailDialog?.open) detailDialog.close();
+
+  const routePath = $("#route-path");
+  const routeNotice = $("#route-notice");
+  if (routePath) routePath.setAttribute("d", "");
+  if (routeNotice) routeNotice.hidden = true;
+
+  try {
+    const url = new URL(location.href);
+    url.hash = "";
     history.replaceState(null, "", url);
   } catch {
     // Local file execution safeguard
@@ -529,6 +574,10 @@ export function setupUIEventListeners() {
   const viewAllBtn = $("#view-all");
   if (viewAllBtn) {
     viewAllBtn.addEventListener("click", resetFilters);
+  }
+  const resetFilterBtn = $("#reset-all");
+  if (resetFilterBtn) {
+    resetFilterBtn.addEventListener("click", resetFilters);
   }
 
   const navInfoBtn = $("#nav-info");

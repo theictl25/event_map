@@ -33,6 +33,7 @@ export const translations = {
     zoomIn: "ຂະຫຍາຍ",
     zoomOut: "ຍໍ້",
     fitMap: "ປັບພໍດີໜ້າຈໍ",
+    mapLoading: "ກຳລັງໂຫຼດແຜນທີ່ຈາກ Google Sheet…",
     dialogDetailsTitle: "ລາຍລະອຽດບູທ",
     aboutTitle: "ກ່ຽວກັບ",
     facebook: "Facebook",
@@ -61,6 +62,7 @@ export const translations = {
     footerText: (count) => `EventMap · ${count} ຕຳແໜ່ງບູທ · ລະບົບແນະນຳບູທ`,
     defaultDesc: "ຍັງບໍ່ທັນມີຂໍ້ມູນລາຍລະອຽດຮ້ານເທື່ອ.",
     defaultHours: "ບໍ່ໄດ້ລະບຸເວລາເປີດ-ປິດ",
+    resetFilter: "ລ້າງຕົວກອງ",
   },
   en: {
     docTitleHome: "Event Map — Find Your Favorite Booth",
@@ -93,6 +95,7 @@ export const translations = {
     zoomIn: "Zoom in",
     zoomOut: "Zoom out",
     fitMap: "Fit entire map",
+    mapLoading: "Loading map from Google Sheet…",
     dialogDetailsTitle: "Booth details",
     aboutTitle: "About",
     facebook: "Facebook",
@@ -122,6 +125,7 @@ export const translations = {
       `EventMap · ${count} booth locations · Demo event directory`,
     defaultDesc: "Shop details have not been published for this booth yet.",
     defaultHours: "Hours not published",
+    resetFilter: "Reset Filter",
   },
 };
 

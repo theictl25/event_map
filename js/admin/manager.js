@@ -3,6 +3,7 @@ import {
   DEFAULT_ZONE_COLORS,
   ELEMENT_TYPES,
   ELEMENT_SHAPES,
+  compactMapLayout,
   defaultMapLayout,
   getMapLayout,
   normalizeMapLayout,
@@ -23,23 +24,81 @@ const message = document.querySelector("#manager-message");
 const widthInput = document.querySelector("#map-width");
 const heightInput = document.querySelector("#map-height");
 const gridInput = document.querySelector("#grid-size");
-const zoneColorList = document.querySelector("#zone-color-list");
 const zoomLabel = document.querySelector("#manager-zoom-label");
 const mapLoading = document.querySelector("#manager-map-loading");
 const mapLoadingText = document.querySelector("#manager-map-loading-text");
 const previewDialog = document.querySelector("#map-preview-dialog");
 const previewImage = document.querySelector("#map-preview-image");
 const layersList = document.querySelector("#layers-list");
-let layout = structuredClone(normalizeMapLayout(getMapLayout()));
+const MANAGER_DRAFT_KEY = "eventmap_manager_draft_v1";
+
+function readManagerDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem(MANAGER_DRAFT_KEY) || "null");
+    if (!draft?.layout || typeof draft.layout !== "object") return null;
+    const history = (entries) =>
+      Array.isArray(entries)
+        ? entries.slice(-50).map((entry) => normalizeMapLayout(entry))
+        : [];
+    return {
+      layout: normalizeMapLayout(draft.layout),
+      undoStack: history(draft.undoStack),
+      redoStack: history(draft.redoStack),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveManagerDraft() {
+  try {
+    localStorage.setItem(
+      MANAGER_DRAFT_KEY,
+      JSON.stringify({ layout, undoStack, redoStack }),
+    );
+  } catch {
+    // A full or unavailable browser storage must not interrupt map editing.
+  }
+}
+
+function clearManagerDraft() {
+  try {
+    localStorage.removeItem(MANAGER_DRAFT_KEY);
+  } catch {
+    // Keep editing available even when browser storage is unavailable.
+  }
+}
+
+let draftSaveQueued = false;
+function scheduleDraftSave() {
+  if (draftSaveQueued) return;
+  draftSaveQueued = true;
+  queueMicrotask(() => {
+    draftSaveQueued = false;
+    saveManagerDraft();
+  });
+}
+
+const restoredDraft = readManagerDraft();
+let layout = structuredClone(
+  restoredDraft?.layout ?? normalizeMapLayout(getMapLayout()),
+);
 let selectedId = null;
+let selectedIds = new Set();
+let draggedLayerIds = [];
+let copiedElements = [];
 let interaction = null;
 let editStart = null;
-let undoStack = [];
+let undoStack = restoredDraft?.undoStack ?? [];
+let redoStack = restoredDraft?.redoStack ?? [];
 let camera = { scale: 1, x: 0, y: 0 };
 const pointers = new Map();
 let panMode = false;
 let spaceHeld = false;
 let cameraPaintFrame = null;
+let pageScrollFrame = null;
+let pendingPageScroll = 0;
+let loadingTouch = null;
 
 const layoutSourceCopy = {
   en: {
@@ -72,11 +131,129 @@ function setMapLoading(isLoading) {
   mapLoading.hidden = !isLoading;
 }
 
+mapLoading?.addEventListener(
+  "wheel",
+  (event) => {
+    // While the overlay is visible, keep the map locked but let the page
+    // continue to scroll instead of sending the wheel event to the SVG map.
+    let delta = event.deltaY;
+    if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16;
+    if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE)
+      delta *= window.innerHeight;
+    event.preventDefault();
+    window.scrollBy({ top: delta, left: 0, behavior: "auto" });
+  },
+  { passive: false },
+);
+
+mapLoading?.addEventListener("pointerdown", (event) => {
+  if (event.pointerType !== "touch") return;
+  loadingTouch = { pointerId: event.pointerId, clientY: event.clientY };
+  mapLoading.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+mapLoading?.addEventListener("pointermove", (event) => {
+  if (!loadingTouch || loadingTouch.pointerId !== event.pointerId) return;
+  schedulePageScroll(loadingTouch.clientY - event.clientY);
+  loadingTouch.clientY = event.clientY;
+  event.preventDefault();
+});
+mapLoading?.addEventListener("pointerup", (event) => {
+  if (loadingTouch?.pointerId === event.pointerId) loadingTouch = null;
+});
+mapLoading?.addEventListener("pointercancel", () => {
+  loadingTouch = null;
+});
+
 const snapshot = () => structuredClone(layout);
 const selected = () => layout.elements.find((item) => item.id === selectedId);
+const selectedItems = () =>
+  layout.elements.filter((item) => selectedIds.has(item.id));
+function selectOnly(id) {
+  selectedId = id;
+  selectedIds = id ? new Set([id]) : new Set();
+}
+function toggleSelected(id) {
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+    selectedId = selectedIds.values().next().value || null;
+  } else {
+    selectedIds.add(id);
+    selectedId = id;
+  }
+}
+function syncSelection() {
+  const ids = new Set(layout.elements.map((item) => item.id));
+  selectedIds = new Set([...selectedIds].filter((id) => ids.has(id)));
+  if (!selectedIds.has(selectedId)) {
+    selectedId = selectedIds.values().next().value || null;
+  }
+}
+function deleteSelectedElements() {
+  if (!selectedIds.size) return;
+  remember();
+  layout.elements = layout.elements.filter((item) => !selectedIds.has(item.id));
+  selectOnly(null);
+  renderAll();
+}
+function nextElementId(type) {
+  let count = 1;
+  while (layout.elements.some((item) => item.id === `${type}-${count}`)) {
+    count += 1;
+  }
+  return `${type}-${count}`;
+}
+function nextBoothId(zone) {
+  const normalizedZone = String(zone || "A").trim().toUpperCase() || "A";
+  const highestNumber = layout.elements
+    .filter((item) => item.type === "booth" && item.zone === normalizedZone)
+    .reduce((highest, item) => {
+      const number = Number(String(item.boothId || item.id).replace(/\D/g, ""));
+      return Number.isFinite(number) ? Math.max(highest, number) : highest;
+    }, 0);
+  return normalizedZone + String(highestNumber + 1).padStart(2, "0");
+}
+function copySelectedElements() {
+  const items = selectedItems();
+  if (!items.length) return false;
+  copiedElements = structuredClone(items);
+  return true;
+}
+function pasteCopiedElements() {
+  if (!copiedElements.length) return;
+
+  const before = snapshot();
+  const grid = Number(layout.gridSize || 5);
+  const left = Math.min(...copiedElements.map((item) => item.x));
+  const top = Math.min(...copiedElements.map((item) => item.y));
+  const right = Math.max(...copiedElements.map((item) => item.x + item.width));
+  const bottom = Math.max(...copiedElements.map((item) => item.y + item.height));
+  const requestedOffset = grid * 4;
+  const offsetX =
+    right + requestedOffset <= layout.width
+      ? requestedOffset
+      : Math.max(-left, -requestedOffset);
+  const offsetY =
+    bottom + requestedOffset <= layout.height
+      ? requestedOffset
+      : Math.max(-top, -requestedOffset);
+  const pasted = copiedElements.map((source) => {
+    const copy = structuredClone(source);
+    copy.id = nextElementId(copy.type);
+    copy.x = Math.max(0, Math.min(layout.width - copy.width, copy.x + offsetX));
+    copy.y = Math.max(0, Math.min(layout.height - copy.height, copy.y + offsetY));
+    if (copy.type === "booth") copy.boothId = nextBoothId(copy.zone);
+    layout.elements.push(copy);
+    return copy;
+  });
+  selectedIds = new Set(pasted.map((item) => item.id));
+  selectedId = pasted.at(-1)?.id || null;
+  remember(before);
+  renderAll();
+}
 const snap = (value) =>
-  Math.round(value / Number(layout.gridSize || 25)) *
-  Number(layout.gridSize || 25);
+  Math.round(value / Number(layout.gridSize || 5)) *
+  Number(layout.gridSize || 5);
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const escapeHTML = (value) =>
   String(value ?? "").replace(
@@ -87,17 +264,35 @@ const escapeHTML = (value) =>
       ],
   );
 
-function remember(before = snapshot()) {
-  if (!undoStack.length || !equal(undoStack.at(-1), before))
-    undoStack.push(before);
-  if (undoStack.length > 50) undoStack.shift();
+function updateHistoryControls() {
   document.querySelector("#undo-map").disabled = !undoStack.length;
+  document.querySelector("#redo-map").disabled = !redoStack.length;
+}
+function remember(before = snapshot()) {
+  if (!undoStack.length || !equal(undoStack.at(-1), before)) {
+    undoStack.push(before);
+    redoStack = [];
+  }
+  if (undoStack.length > 50) undoStack.shift();
+  updateHistoryControls();
+  scheduleDraftSave();
 }
 function undo() {
   const previous = undoStack.pop();
   if (!previous) return;
+  redoStack.push(snapshot());
   layout = previous;
-  if (!selected()) selectedId = null;
+  syncSelection();
+  saveManagerDraft();
+  renderAll();
+}
+function redo() {
+  const next = redoStack.pop();
+  if (!next) return;
+  undoStack.push(snapshot());
+  layout = next;
+  syncSelection();
+  saveManagerDraft();
   renderAll();
 }
 function itemLabel(item) {
@@ -106,6 +301,85 @@ function itemLabel(item) {
       ? item.label_lo || item.label_en
       : item.label_en || item.label_lo;
   return translated || item.boothId || item.id;
+}
+
+function wrapItemLabel(item, verticalWalkway) {
+  const label = item.type === "tree" ? "" : String(itemLabel(item)).trim();
+  if (!label) return [];
+
+  const fontSize = Math.max(1, Number(item.fontSize) || 12);
+  const availableWidth = (verticalWalkway ? item.height : item.width) - 10;
+  const maximumCharacters = Math.max(
+    3,
+    Math.floor(availableWidth / (fontSize * 0.6)),
+  );
+  const lines = [];
+
+  label.split(/\r?\n/).forEach((paragraph) => {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    let line = "";
+
+    words.forEach((word) => {
+      const candidates = Array.from(word);
+      const chunks = [];
+      while (candidates.length) {
+        chunks.push(candidates.splice(0, maximumCharacters).join(""));
+      }
+
+      chunks.forEach((chunk) => {
+        const next = line ? `${line} ${chunk}` : chunk;
+        if (next.length <= maximumCharacters) {
+          line = next;
+        } else {
+          if (line) lines.push(line);
+          line = chunk;
+        }
+      });
+    });
+
+    if (line) lines.push(line);
+  });
+
+  return lines;
+}
+
+function itemLabelMarkup(item, centerX, centerY, verticalWalkway) {
+  const lines = wrapItemLabel(item, verticalWalkway);
+  if (!lines.length) return "";
+
+  const fontSize = Math.max(1, Number(item.fontSize) || 12);
+  const lineHeight = fontSize * 1.15;
+  const firstLineY =
+    centerY - (lineHeight * (lines.length - 1)) / 2 + fontSize * 0.35;
+
+  return (
+    '<text x="' +
+    centerX +
+    '" y="' +
+    firstLineY +
+    '" text-anchor="middle" font-size="' +
+    fontSize +
+    '" fill="' +
+    escapeHTML(item.textColor) +
+    '"' +
+    (verticalWalkway
+      ? ' transform="rotate(-90 ' + centerX + " " + centerY + ')"'
+      : "") +
+    ">" +
+    lines
+      .map(
+        (line, index) =>
+          '<tspan x="' +
+          centerX +
+          '" dy="' +
+          (index ? lineHeight : 0) +
+          '">' +
+          escapeHTML(line) +
+          "</tspan>",
+      )
+      .join("") +
+    "</text>"
+  );
 }
 function clampCamera() {
   const viewWidth = layout.width / camera.scale,
@@ -140,6 +414,15 @@ function scheduleCameraPaint() {
     updateViewBox();
   });
 }
+function schedulePageScroll(delta) {
+  pendingPageScroll += delta;
+  if (pageScrollFrame !== null) return;
+  pageScrollFrame = requestAnimationFrame(() => {
+    window.scrollBy({ top: pendingPageScroll, left: 0, behavior: "auto" });
+    pendingPageScroll = 0;
+    pageScrollFrame = null;
+  });
+}
 function eventPoint(event) {
   const point = canvas.createSVGPoint();
   point.x = event.clientX;
@@ -169,44 +452,209 @@ function panToPointer(event, start) {
   camera.y = start.camera.y - (event.clientY - start.clientY) / screenScale;
 }
 function itemFill(item) {
-  return item.type === "booth"
-    ? layout.zoneColors[item.zone] || item.color
-    : item.color;
+  return item.color;
 }
 function ensureZoneColor(zone) {
   layout.zoneColors ||= {};
-  const key = String(zone || "").trim().toUpperCase();
-  if (key) layout.zoneColors[key] ||= DEFAULT_ZONE_COLORS[key] || DEFAULT_NEW_ZONE_COLOR;
+  const key = String(zone || "")
+    .trim()
+    .toUpperCase();
+  if (key)
+    layout.zoneColors[key] ||=
+      DEFAULT_ZONE_COLORS[key] || DEFAULT_NEW_ZONE_COLOR;
 }
-function zonesInLayout() {
-  return [...new Set([
-    ...Object.keys(DEFAULT_ZONE_COLORS),
-    ...Object.keys(layout.zoneColors || {}),
-    ...layout.elements
-      .filter((item) => item.type === "booth" && item.zone)
-      .map((item) => item.zone.trim().toUpperCase()),
-  ])].sort();
+function blossomMarkup(cx, cy, size) {
+  const petal = size * 0.45;
+  const petals = [
+    [0, -size],
+    [size, 0],
+    [0, size],
+    [-size, 0],
+    [size * 0.7, -size * 0.7],
+  ];
+  return (
+    petals
+      .map(
+        ([x, y]) =>
+          '<circle cx="' +
+          (cx + x) +
+          '" cy="' +
+          (cy + y) +
+          '" r="' +
+          petal +
+          '" fill="#fecdd3"/>',
+      )
+      .join("") +
+    '<circle cx="' +
+    cx +
+    '" cy="' +
+    cy +
+    '" r="' +
+    size * 0.38 +
+    '" fill="#facc15"/>'
+  );
 }
 function shapeMarkup(item, fill) {
-  const x = item.x, y = item.y, width = item.width, height = item.height;
-  const centerX = x + width / 2, centerY = y + height / 2;
+  const x = item.x,
+    y = item.y,
+    width = item.width,
+    height = item.height;
+  const centerX = x + width / 2,
+    centerY = y + height / 2;
 
   if (item.type === "tree") {
-    const crown = Math.min(width, height) * 0.24;
-    return '<rect x="' + x + '" y="' + y + '" width="' + width + '" height="' + height + '" fill="transparent"/>'
-      + '<rect x="' + (centerX - crown * 0.3) + '" y="' + (y + height * 0.58) + '" width="' + crown * 0.6 + '" height="' + height * 0.3 + '" rx="2" fill="#8b5a2b"/>'
-      + '<circle cx="' + centerX + '" cy="' + (y + height * 0.42) + '" r="' + crown + '" fill="' + fill + '"/>'
-      + '<circle cx="' + (centerX - crown * 0.62) + '" cy="' + (y + height * 0.54) + '" r="' + (crown * 0.78) + '" fill="' + fill + '"/>'
-      + '<circle cx="' + (centerX + crown * 0.62) + '" cy="' + (y + height * 0.54) + '" r="' + (crown * 0.78) + '" fill="' + fill + '"/>';
+    const size = Math.min(width, height);
+    const crown = (cx, cy, radius, opacity = 1) =>
+      '<circle cx="' +
+      cx +
+      '" cy="' +
+      cy +
+      '" r="' +
+      radius +
+      '" fill="' +
+      fill +
+      '" fill-opacity="' +
+      opacity +
+      '"/>';
+    return (
+      '<path d="M ' +
+      (x + width * 0.43) +
+      " " +
+      (y + height * 0.46) +
+      " C " +
+      (x + width * 0.45) +
+      " " +
+      (y + height * 0.66) +
+      ", " +
+      (x + width * 0.36) +
+      " " +
+      (y + height * 0.84) +
+      ", " +
+      (x + width * 0.39) +
+      " " +
+      (y + height) +
+      " L " +
+      (x + width * 0.72) +
+      " " +
+      (y + height) +
+      " C " +
+      (x + width * 0.69) +
+      " " +
+      (y + height * 0.82) +
+      ", " +
+      (x + width * 0.59) +
+      " " +
+      (y + height * 0.63) +
+      ", " +
+      (x + width * 0.61) +
+      " " +
+      (y + height * 0.46) +
+      ' Z" fill="#8b6b53"/>' +
+      crown(x + width * 0.5, y + height * 0.24, size * 0.24) +
+      crown(x + width * 0.28, y + height * 0.43, size * 0.25, 0.96) +
+      crown(x + width * 0.72, y + height * 0.45, size * 0.28, 0.92) +
+      crown(x + width * 0.5, y + height * 0.59, size * 0.3, 0.94) +
+      crown(x + width * 0.14, y + height * 0.61, size * 0.18, 0.9) +
+      crown(x + width * 0.88, y + height * 0.62, size * 0.18, 0.9) +
+      blossomMarkup(x + width * 0.31, y + height * 0.3, size * 0.06) +
+      blossomMarkup(x + width * 0.62, y + height * 0.53, size * 0.07) +
+      blossomMarkup(x + width * 0.84, y + height * 0.63, size * 0.06)
+    );
   }
-  if (item.shape === "circle") return '<ellipse cx="' + centerX + '" cy="' + centerY + '" rx="' + (width / 2) + '" ry="' + (height / 2) + '" fill="' + fill + '"/>';
-  if (item.shape === "triangle") return '<polygon points="' + centerX + ',' + y + ' ' + (x + width) + ',' + (y + height) + ' ' + x + ',' + (y + height) + '" fill="' + fill + '"/>';
-  if (item.shape === "hexagon") return '<polygon points="' + (x + width * 0.25) + ',' + y + ' ' + (x + width * 0.75) + ',' + y + ' ' + (x + width) + ',' + centerY + ' ' + (x + width * 0.75) + ',' + (y + height) + ' ' + (x + width * 0.25) + ',' + (y + height) + ' ' + x + ',' + centerY + '" fill="' + fill + '"/>';
-  return '<rect x="' + x + '" y="' + y + '" width="' + width + '" height="' + height + '" rx="6" fill="' + fill + '"/>';
+  if (item.type === "walkway") {
+    return (
+      '<rect x="' +
+      x +
+      '" y="' +
+      y +
+      '" width="' +
+      width +
+      '" height="' +
+      height +
+      '" fill="' +
+      fill +
+      '"/>'
+    );
+  }
+  if (item.shape === "circle")
+    return (
+      '<ellipse cx="' +
+      centerX +
+      '" cy="' +
+      centerY +
+      '" rx="' +
+      width / 2 +
+      '" ry="' +
+      height / 2 +
+      '" fill="' +
+      fill +
+      '"/>'
+    );
+  if (item.shape === "triangle")
+    return (
+      '<polygon points="' +
+      centerX +
+      "," +
+      y +
+      " " +
+      (x + width) +
+      "," +
+      (y + height) +
+      " " +
+      x +
+      "," +
+      (y + height) +
+      '" fill="' +
+      fill +
+      '"/>'
+    );
+  if (item.shape === "hexagon")
+    return (
+      '<polygon points="' +
+      (x + width * 0.25) +
+      "," +
+      y +
+      " " +
+      (x + width * 0.75) +
+      "," +
+      y +
+      " " +
+      (x + width) +
+      "," +
+      centerY +
+      " " +
+      (x + width * 0.75) +
+      "," +
+      (y + height) +
+      " " +
+      (x + width * 0.25) +
+      "," +
+      (y + height) +
+      " " +
+      x +
+      "," +
+      centerY +
+      '" fill="' +
+      fill +
+      '"/>'
+    );
+  return (
+    '<rect x="' +
+    x +
+    '" y="' +
+    y +
+    '" width="' +
+    width +
+    '" height="' +
+    height +
+    '" rx="6" fill="' +
+    fill +
+    '"/>'
+  );
 }
 function renderCanvas() {
   updateViewBox();
-  const grid = Number(layout.gridSize || 25);
+  const grid = Number(layout.gridSize || 5);
   let html =
     '<defs><pattern id="grid" width="' +
     grid +
@@ -222,16 +670,35 @@ function renderCanvas() {
     layout.height +
     '" fill="url(#grid)"/>';
   layout.elements.forEach((item) => {
-    const active = item.id === selectedId;
-    const handle = active
-      ? '<rect class="resize-handle" data-resize-id="' +
-        escapeHTML(item.id) +
-        '" x="' +
-        (item.x + item.width - 9) +
-        '" y="' +
-        (item.y + item.height - 9) +
-        '" width="18" height="18" rx="3"/>'
-      : "";
+    const active = selectedIds.has(item.id);
+    const labelCenterX = item.x + item.width / 2;
+    const labelCenterY = item.y + item.height / 2;
+    const verticalWalkway = item.type === "walkway" && item.height > item.width;
+    const handle = !active || selectedIds.size !== 1
+      ? ""
+      : ["nw", "ne", "sw", "se"]
+          .map((corner) => {
+            const right = corner.includes("e");
+            const bottom = corner.includes("s");
+            const handleX = item.x + (right ? item.width : 0);
+            const handleY = item.y + (bottom ? item.height : 0);
+            const attributes =
+              ' class="resize-handle" data-resize-id="' +
+              escapeHTML(item.id) +
+              '" data-resize-corner="' +
+              corner +
+              '"';
+            return (
+              "<rect" +
+              attributes +
+              ' x="' +
+              (handleX - 5) +
+              '" y="' +
+              (handleY - 5) +
+              '" width="10" height="10" rx="2"/>'
+            );
+          })
+          .join("");
     html +=
       '<g class="builder-item type-' +
       escapeHTML(item.type) +
@@ -240,13 +707,7 @@ function renderCanvas() {
       escapeHTML(item.id) +
       '">' +
       shapeMarkup(item, escapeHTML(itemFill(item))) +
-      '<text x="' +
-      (item.x + item.width / 2) +
-      '" y="' +
-      (item.y + item.height / 2 + 4) +
-      '" text-anchor="middle">' +
-      (item.type === "tree" ? "" : escapeHTML(itemLabel(item))) +
-      "</text>" +
+      itemLabelMarkup(item, labelCenterX, labelCenterY, verticalWalkway) +
       handle +
       "</g>";
   });
@@ -254,6 +715,15 @@ function renderCanvas() {
 }
 function renderInspector() {
   const item = selected();
+  if (selectedIds.size > 1) {
+    inspector.innerHTML =
+      "<h2>" +
+      managerT("properties") +
+      "</h2><p>" +
+      managerT("multiSelectHint") +
+      "</p>";
+    return;
+  }
   if (!item) {
     inspector.innerHTML =
       "<h2>" +
@@ -303,12 +773,21 @@ function renderInspector() {
     (item.type === "booth"
       ? field(managerT("boothId"), "boothId") + field(managerT("zone"), "zone")
       : "") +
-    (item.type !== "tree" ? shapeField : "") +
+    (item.type === "walkway"
+      ? '<button class="button" type="button" id="rotate-walkway">' +
+        managerT("rotateWalkway") +
+        "</button>"
+      : "") +
+    (item.type !== "tree" && item.type !== "walkway" ? shapeField : "") +
     field("X", "x", "number", 'min="0"') +
     field("Y", "y", "number", 'min="0"') +
     field(managerT("width"), "width", "number", 'min="1"') +
     field(managerT("height"), "height", "number", 'min="1"') +
     field(managerT("color"), "color", "color") +
+    (item.type !== "tree"
+      ? field(managerT("fontSize"), "fontSize", "number", 'min="6" max="72"') +
+        field(managerT("textColor"), "textColor", "color")
+      : "") +
     '<button class="button danger" id="delete-element">' +
     managerT("deleteElement") +
     "</button>";
@@ -317,66 +796,63 @@ function renderSettings() {
   widthInput.value = layout.width;
   heightInput.value = layout.height;
   gridInput.value = layout.gridSize;
-  zoneColorList.replaceChildren();
-  zonesInLayout().forEach((zone) => {
-    const label = document.createElement("label");
-    const input = document.createElement("input");
-    input.type = "color";
-    input.dataset.zoneColor = zone;
-    input.value = layout.zoneColors[zone] || DEFAULT_ZONE_COLORS[zone] || DEFAULT_NEW_ZONE_COLOR;
-    label.append("Zone " + zone + " ", input);
-    zoneColorList.append(label);
-  });
 }
 function renderLayers() {
   layersList.replaceChildren();
   const layerOrder = [...layout.elements].reverse();
   layerOrder.forEach((item) => {
     const row = document.createElement("div");
-    row.className = "layer-row" + (item.id === selectedId ? " selected" : "");
+    row.className = "layer-row" + (selectedIds.has(item.id) ? " selected" : "");
     row.draggable = true;
     row.dataset.id = item.id;
     row.innerHTML =
-      '<span class="layer-drag-handle" aria-hidden="true">⠿</span><button class="layer-select" type="button"><span class="layer-swatch" style="background:' +
+      '<span class="layer-drag-handle" aria-hidden="true">⠿</span><button class="layer-select" type="button" aria-pressed="' +
+      String(selectedIds.has(item.id)) +
+      '"><span class="layer-swatch" style="background:' +
       escapeHTML(item.color) +
       '"></span><span><strong>' +
       escapeHTML(itemLabel(item)) +
       "</strong><small>" +
       managerT("types." + item.type) +
       "</small></span></button>";
-    row.querySelector(".layer-select").addEventListener("click", () => {
-      selectedId = item.id;
+    row.querySelector(".layer-select").addEventListener("click", (event) => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey) toggleSelected(item.id);
+      else selectOnly(item.id);
       renderAll();
     });
     row.addEventListener("dragstart", (event) => {
+      draggedLayerIds = selectedIds.has(item.id)
+        ? layerOrder
+            .filter((entry) => selectedIds.has(entry.id))
+            .map((entry) => entry.id)
+        : [item.id];
       event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", item.id);
+      event.dataTransfer.setData("text/plain", draggedLayerIds.join(","));
       row.classList.add("dragging");
     });
     row.addEventListener("dragend", () => {
+      draggedLayerIds = [];
       document
         .querySelectorAll(".layer-row")
         .forEach((entry) => entry.classList.remove("dragging", "drag-over"));
     });
     row.addEventListener("dragover", (event) => {
       event.preventDefault();
-      const sourceId = event.dataTransfer.getData("text/plain");
-      if (sourceId !== item.id) row.classList.add("drag-over");
+      if (!draggedLayerIds.includes(item.id)) row.classList.add("drag-over");
     });
     row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
     row.addEventListener("drop", (event) => {
       event.preventDefault();
-      const sourceId = event.dataTransfer.getData("text/plain");
-      const sourceIndex = layerOrder.findIndex(
-        (entry) => entry.id === sourceId,
-      );
-      const targetIndex = layerOrder.findIndex((entry) => entry.id === item.id);
-      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex)
-        return;
+      const movedIds = draggedLayerIds.length
+        ? draggedLayerIds
+        : event.dataTransfer.getData("text/plain").split(",").filter(Boolean);
+      if (!movedIds.length || movedIds.includes(item.id)) return;
       const before = snapshot();
-      const reordered = [...layerOrder];
-      const [moved] = reordered.splice(sourceIndex, 1);
-      reordered.splice(targetIndex, 0, moved);
+      const moved = layerOrder.filter((entry) => movedIds.includes(entry.id));
+      const reordered = layerOrder.filter((entry) => !movedIds.includes(entry.id));
+      const targetIndex = reordered.findIndex((entry) => entry.id === item.id);
+      if (targetIndex < 0) return;
+      reordered.splice(targetIndex, 0, ...moved);
       // Layers display front-to-back, while SVG draws layout.elements
       // back-to-front. Reverse once to preserve that existing data model.
       layout.elements = reordered.reverse();
@@ -391,7 +867,7 @@ function renderAll() {
   renderCanvas();
   renderInspector();
   renderLayers();
-  document.querySelector("#undo-map").disabled = !undoStack.length;
+  updateHistoryControls();
   document.querySelector("#center-element").disabled = !layout.elements.length;
 }
 function renderPalette() {
@@ -421,9 +897,11 @@ function addElement(type) {
     width: meta.width,
     height: meta.height,
     color: meta.color,
+    fontSize: 12,
+    textColor: type === "booth" ? "#425066" : "#334155",
     shape: "rectangle",
   });
-  selectedId = id;
+  selectOnly(id);
   remember(before);
   renderAll();
 }
@@ -440,26 +918,42 @@ function zoomAt(nextScale, clientX, clientY) {
   camera.scale = scale;
   updateViewBox();
 }
+function scrollMapByWheel(delta, horizontal = false) {
+  const viewWidth = layout.width / camera.scale;
+  const viewHeight = layout.height / camera.scale;
+  const screenScale = Math.min(
+    canvas.clientWidth / viewWidth,
+    canvas.clientHeight / viewHeight,
+  );
+
+  if (!Number.isFinite(screenScale) || screenScale <= 0) return;
+  if (horizontal) camera.x += delta / screenScale;
+  else camera.y += delta / screenScale;
+  updateViewBox();
+}
 function newBlankMap() {
-  if (!confirm(managerT("newMapConfirm"))) return;
+  if (!confirm(managerT("newBlankMap"))) return;
   remember();
   layout = {
     width: 800,
     height: 900,
-    gridSize: 25,
+    gridSize: 5,
     zoneColors: { ...DEFAULT_ZONE_COLORS },
     elements: [],
   };
-  selectedId = null;
+  selectOnly(null);
   camera = { scale: 1, x: 0, y: 0 };
   message.textContent = "";
   renderAll();
 }
-function replaceEditorLayout(nextLayout) {
+function replaceEditorLayout(nextLayout, persistDraft = true) {
   layout = structuredClone(normalizeMapLayout(nextLayout));
-  selectedId = null;
+  selectOnly(null);
   undoStack = [];
+  redoStack = [];
   camera = { scale: 1, x: 0, y: 0 };
+  if (persistDraft) saveManagerDraft();
+  else clearManagerDraft();
   renderAll();
 }
 function addLayoutSourceButtons() {
@@ -505,7 +999,7 @@ async function loadGoogleSheetLayout(confirmReplace = false) {
 
   try {
     const sheetLayout = await loadMapLayoutFromGoogleSheet();
-    replaceEditorLayout(sheetLayout);
+    replaceEditorLayout(sheetLayout, confirmReplace);
     message.textContent = layoutCopy().loaded;
   } catch (error) {
     message.textContent = `${layoutCopy().loadFailed} ${error.message}`;
@@ -548,11 +1042,16 @@ canvas.addEventListener("pointerdown", (event) => {
   pointers.set(event.pointerId, {
     clientX: event.clientX,
     clientY: event.clientY,
+    startedAt: performance.now(),
   });
   const handle = event.target.closest("[data-resize-id]"),
     group = event.target.closest("[data-id]"),
     point = eventPoint(event);
-  if (pointers.size === 2) {
+  const isContinuingPageScroll = interaction?.kind === "page-scroll";
+  const canStartPinch =
+    !isContinuingPageScroll ||
+    (!interaction.moved && performance.now() - interaction.startedAt < 180);
+  if (pointers.size === 2 && canStartPinch) {
     const [first, second] = [...pointers.values()];
     const midpoint = {
       clientX: (first.clientX + second.clientX) / 2,
@@ -576,13 +1075,39 @@ canvas.addEventListener("pointerdown", (event) => {
     canvas.setPointerCapture(event.pointerId);
     return;
   }
-  if (!handle && !group && selectedId !== null) {
-    selectedId = null;
+  // A second accidental touch while vertically scrolling must not turn the
+  // gesture into a zoom. Keep the original one-finger page scroll active.
+  if (pointers.size > 1) return;
+  const editingSelectedTouch =
+    event.pointerType === "touch" &&
+    camera.scale <= 1 &&
+    !panMode &&
+    (Boolean(handle) || selectedIds.has(group?.dataset.id));
+  // At 100%, a touch on a new element still scrolls the page. After the
+  // element is selected, its next drag (or a resize handle) edits the map.
+  if (
+    event.pointerType === "touch" &&
+    camera.scale <= 1 &&
+    !editingSelectedTouch
+  ) {
+    interaction = {
+      kind: "touch-pending",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      clientY: event.clientY,
+      targetId: handle?.dataset.resizeId || group?.dataset.id || null,
+    };
+    canvas.setPointerCapture(event.pointerId);
+    return;
+  }
+  if (!handle && !group && selectedIds.size) {
+    selectOnly(null);
     renderAll();
   }
-  // Pan mode has priority over moving an element. This prevents accidental
-  // element moves while inspecting a zoomed-in portion of the map.
-  if ((panMode || spaceHeld) && camera.scale > 1) {
+  // Pan mode always locks elements. Holding Space only starts panning once
+  // there is a zoomed area to move around.
+  if (panMode || (spaceHeld && camera.scale > 1)) {
     event.preventDefault();
     interaction = startPan(event);
     canvas.setPointerCapture(event.pointerId);
@@ -590,7 +1115,7 @@ canvas.addEventListener("pointerdown", (event) => {
   }
   if (handle) {
     event.preventDefault();
-    selectedId = handle.dataset.resizeId;
+    selectOnly(handle.dataset.resizeId);
     const item = selected(),
       before = snapshot();
     interaction = {
@@ -598,6 +1123,7 @@ canvas.addEventListener("pointerdown", (event) => {
       pointerId: event.pointerId,
       start: point,
       item: { ...item },
+      corner: handle.dataset.resizeCorner,
       before,
     };
     canvas.setPointerCapture(event.pointerId);
@@ -609,22 +1135,29 @@ canvas.addEventListener("pointerdown", (event) => {
   if (group) {
     event.preventDefault();
     const clickedId = group.dataset.id;
+    const isMultiSelect = event.ctrlKey || event.metaKey || event.shiftKey;
 
-    // The first click is selection only. A later press-and-drag on the
-    // selected element moves it, avoiding accidental moves while inspecting.
-    if (selectedId !== clickedId) {
-      selectedId = clickedId;
+    if (isMultiSelect) {
+      toggleSelected(clickedId);
       renderAll();
       return;
     }
 
-    const item = selected(),
+    // The first click is selection only. A later press-and-drag on the
+    // selected element moves it, avoiding accidental moves while inspecting.
+    if (!selectedIds.has(clickedId)) {
+      selectOnly(clickedId);
+      renderAll();
+      return;
+    }
+
+    const items = selectedItems(),
       before = snapshot();
     interaction = {
       kind: "drag",
       pointerId: event.pointerId,
-      offsetX: point.x - item.x,
-      offsetY: point.y - item.y,
+      start: point,
+      items: items.map((item) => ({ ...item })),
       before,
     };
     canvas.setPointerCapture(event.pointerId);
@@ -642,10 +1175,12 @@ canvas.addEventListener("pointerdown", (event) => {
       kind: "page-scroll",
       pointerId: event.pointerId,
       clientY: event.clientY,
+      startedAt: performance.now(),
+      moved: false,
     };
     canvas.setPointerCapture(event.pointerId);
-  } else if (selectedId !== null) {
-    selectedId = null;
+  } else if (selectedIds.size) {
+    selectOnly(null);
     renderAll();
   }
 });
@@ -684,46 +1219,99 @@ canvas.addEventListener("pointermove", (event) => {
     return;
   }
   if (!interaction || interaction.pointerId !== event.pointerId) return;
+  if (interaction.kind === "touch-pending") {
+    const distance = Math.hypot(
+      event.clientX - interaction.startX,
+      event.clientY - interaction.startY,
+    );
+    if (distance <= 6) return;
+    interaction = {
+      kind: "page-scroll",
+      pointerId: event.pointerId,
+      clientY: interaction.clientY,
+      startedAt: performance.now(),
+      moved: true,
+    };
+  }
   if (interaction.kind === "page-scroll") {
-    window.scrollBy({
-      top: interaction.clientY - event.clientY,
-      left: 0,
-      behavior: "auto",
-    });
+    const delta = interaction.clientY - event.clientY;
+    if (Math.abs(delta) > 2) interaction.moved = true;
+    schedulePageScroll(delta);
     interaction.clientY = event.clientY;
     return;
   }
   const item = selected();
-  if (interaction.kind === "drag" && item) {
+  if (interaction.kind === "drag" && interaction.items.length) {
     const point = eventPoint(event);
-    item.x = Math.max(
-      0,
-      Math.min(layout.width - item.width, snap(point.x - interaction.offsetX)),
+    const requestedX = snap(point.x - interaction.start.x);
+    const requestedY = snap(point.y - interaction.start.y);
+    const minX = Math.max(...interaction.items.map((entry) => -entry.x));
+    const maxX = Math.min(
+      ...interaction.items.map((entry) => layout.width - entry.width - entry.x),
     );
-    item.y = Math.max(
-      0,
-      Math.min(
-        layout.height - item.height,
-        snap(point.y - interaction.offsetY),
-      ),
+    const minY = Math.max(...interaction.items.map((entry) => -entry.y));
+    const maxY = Math.min(
+      ...interaction.items.map((entry) => layout.height - entry.height - entry.y),
     );
+    const deltaX = Math.max(minX, Math.min(maxX, requestedX));
+    const deltaY = Math.max(minY, Math.min(maxY, requestedY));
+    interaction.items.forEach((entry) => {
+      const target = layout.elements.find((element) => element.id === entry.id);
+      if (!target) return;
+      target.x = entry.x + deltaX;
+      target.y = entry.y + deltaY;
+    });
     renderCanvas();
   } else if (interaction.kind === "resize" && item) {
     const point = eventPoint(event);
-    item.width = Math.max(
-      10,
-      Math.min(
-        layout.width - item.x,
-        snap(interaction.item.width + point.x - interaction.start.x),
-      ),
-    );
-    item.height = Math.max(
-      10,
-      Math.min(
-        layout.height - item.y,
-        snap(interaction.item.height + point.y - interaction.start.y),
-      ),
-    );
+    const start = interaction.item;
+    const corner = interaction.corner;
+    if (item.type === "tree") {
+      const resizeFromRight = corner.includes("e");
+      const resizeFromBottom = corner.includes("s");
+      const anchorX = resizeFromRight ? start.x : start.x + start.width;
+      const anchorY = resizeFromBottom ? start.y : start.y + start.height;
+      const requestedWidth = Math.abs(point.x - anchorX);
+      const requestedHeight = Math.abs(point.y - anchorY);
+      const widthDelta = requestedWidth / start.width - 1;
+      const heightDelta = requestedHeight / start.height - 1;
+      const useWidth = Math.abs(widthDelta) >= Math.abs(heightDelta);
+      const basis = useWidth ? start.width : start.height;
+      const requestedScale =
+        Math.max(
+          10,
+          snap(basis * (1 + (useWidth ? widthDelta : heightDelta))),
+        ) / basis;
+      const minScale = Math.max(10 / start.width, 10 / start.height);
+      const maxScale = Math.min(
+        (resizeFromRight ? layout.width - anchorX : anchorX) / start.width,
+        (resizeFromBottom ? layout.height - anchorY : anchorY) / start.height,
+      );
+      const scale = Math.max(minScale, Math.min(maxScale, requestedScale));
+      item.width = start.width * scale;
+      item.height = start.height * scale;
+      item.x = resizeFromRight ? anchorX : anchorX - item.width;
+      item.y = resizeFromBottom ? anchorY : anchorY - item.height;
+    } else {
+      const right = start.x + start.width;
+      const bottom = start.y + start.height;
+      const left = corner.includes("w")
+        ? Math.max(0, Math.min(right - 10, snap(point.x)))
+        : start.x;
+      const top = corner.includes("n")
+        ? Math.max(0, Math.min(bottom - 10, snap(point.y)))
+        : start.y;
+      const nextRight = corner.includes("e")
+        ? Math.min(layout.width, Math.max(left + 10, snap(point.x)))
+        : right;
+      const nextBottom = corner.includes("s")
+        ? Math.min(layout.height, Math.max(top + 10, snap(point.y)))
+        : bottom;
+      item.x = left;
+      item.y = top;
+      item.width = nextRight - left;
+      item.height = nextBottom - top;
+    }
     renderCanvas();
   } else if (interaction.kind === "pan") {
     panToPointer(event, interaction);
@@ -737,6 +1325,16 @@ canvas.addEventListener("pointerup", (event) => {
     (interaction.pointerId !== event.pointerId && interaction.kind !== "pinch")
   )
     return;
+  if (interaction.kind === "touch-pending") {
+    if (interaction.targetId) {
+      selectOnly(interaction.targetId);
+    } else {
+      selectOnly(null);
+    }
+    interaction = null;
+    renderAll();
+    return;
+  }
   if (interaction.before) remember(interaction.before);
   if (interaction.kind === "pinch" && pointers.size === 1) {
     const [remaining] = pointers.entries();
@@ -753,24 +1351,29 @@ canvas.addEventListener("pointercancel", (event) => {
 canvas.addEventListener(
   "wheel",
   (event) => {
-    // At 100% the page keeps its normal vertical scroll. Once the manager is
-    // zoomed in, the wheel belongs to the map just like the public map page.
+    // Scrolling moves through a zoomed map. Hold Ctrl (or Command on macOS)
+    // to zoom while keeping the pointer position as the zoom anchor.
     let delta = event.deltaY;
     if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16;
     if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE)
       delta *= window.innerHeight;
     delta = Math.max(-120, Math.min(120, delta));
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {
+      zoomAt(
+        camera.scale * Math.exp(-delta * 0.0025),
+        event.clientX,
+        event.clientY,
+      );
+      return;
+    }
+    // At 100% the entire map is already visible, so keep normal page
+    // scrolling available. Once zoomed in, the wheel pans the map instead.
     if (camera.scale <= 1) {
-      event.preventDefault();
       window.scrollBy({ top: delta, left: 0, behavior: "auto" });
       return;
     }
-    event.preventDefault();
-    zoomAt(
-      camera.scale * Math.exp(-delta * 0.0025),
-      event.clientX,
-      event.clientY,
-    );
+    scrollMapByWheel(delta, event.shiftKey);
   },
   { passive: false },
 );
@@ -786,8 +1389,10 @@ inspector.addEventListener("input", (event) => {
   const item = selected(),
     key = event.target.dataset.key;
   if (!item || !key) return;
-  item[key] = ["x", "y", "width", "height"].includes(key)
-    ? Math.max(1, Number(event.target.value) || 1)
+  item[key] = ["x", "y", "width", "height", "fontSize"].includes(key)
+    ? key === "fontSize"
+      ? Math.min(72, Math.max(6, Number(event.target.value) || 12))
+      : Math.max(1, Number(event.target.value) || 1)
     : key === "zone"
       ? event.target.value.trim().toUpperCase()
       : event.target.value;
@@ -795,10 +1400,13 @@ inspector.addEventListener("input", (event) => {
   renderCanvas();
 });
 inspector.addEventListener("change", (event) => {
-  const item = selected(), key = event.target.dataset.key;
+  const item = selected(),
+    key = event.target.dataset.key;
   if (item && key) {
-    item[key] = ["x", "y", "width", "height"].includes(key)
-      ? Math.max(1, Number(event.target.value) || 1)
+    item[key] = ["x", "y", "width", "height", "fontSize"].includes(key)
+      ? key === "fontSize"
+        ? Math.min(72, Math.max(6, Number(event.target.value) || 12))
+        : Math.max(1, Number(event.target.value) || 1)
       : key === "zone"
         ? event.target.value.trim().toUpperCase()
         : event.target.value;
@@ -810,11 +1418,28 @@ inspector.addEventListener("change", (event) => {
   if (key === "zone") renderAll();
 });
 inspector.addEventListener("click", (event) => {
-  if (event.target.id !== "delete-element") return;
-  remember();
-  layout.elements = layout.elements.filter((item) => item.id !== selectedId);
-  selectedId = null;
-  renderAll();
+  if (event.target.id === "rotate-walkway") {
+    const item = selected();
+    if (!item || item.type !== "walkway") return;
+    const before = snapshot();
+    const centerX = item.x + item.width / 2;
+    const centerY = item.y + item.height / 2;
+    [item.width, item.height] = [item.height, item.width];
+    item.x = Math.max(
+      0,
+      Math.min(layout.width - item.width, centerX - item.width / 2),
+    );
+    item.y = Math.max(
+      0,
+      Math.min(layout.height - item.height, centerY - item.height / 2),
+    );
+    remember(before);
+    renderAll();
+    return;
+  }
+  if (event.target.id === "delete-element") {
+    deleteSelectedElements();
+  }
 });
 [widthInput, heightInput, gridInput].forEach((input) => {
   input.addEventListener("focusin", () => {
@@ -823,7 +1448,7 @@ inspector.addEventListener("click", (event) => {
   input.addEventListener("input", () => {
     layout.width = Math.max(100, Number(widthInput.value) || 800);
     layout.height = Math.max(100, Number(heightInput.value) || 900);
-    layout.gridSize = Math.max(5, Number(gridInput.value) || 25);
+    layout.gridSize = Math.max(5, Number(gridInput.value) || 5);
     renderCanvas();
   });
   input.addEventListener("change", () => {
@@ -832,28 +1457,10 @@ inspector.addEventListener("click", (event) => {
     renderAll();
   });
 });
-zoneColorList.addEventListener("focusin", (event) => {
-  if (event.target.matches("[data-zone-color]")) {
-    editStart = snapshot();
-  }
-});
-zoneColorList.addEventListener("input", (event) => {
-  if (event.target.matches("[data-zone-color]")) {
-    layout.zoneColors[event.target.dataset.zoneColor] = event.target.value;
-    renderCanvas();
-  }
-});
-zoneColorList.addEventListener("change", (event) => {
-  if (event.target.matches("[data-zone-color]")) {
-    if (editStart && !equal(editStart, layout)) remember(editStart);
-    editStart = null;
-    renderAll();
-  }
-});
 document.querySelector("#save-map").addEventListener("click", () => {
   saveMapLayout(layout);
   document.dispatchEvent(
-    new CustomEvent("eventmap:save-layout", { detail: layout }),
+    new CustomEvent("eventmap:save-layout", { detail: compactMapLayout(layout) }),
   );
   message.textContent = managerT("saving");
 });
@@ -870,7 +1477,9 @@ document.querySelector("#center-element").addEventListener("click", () => {
   const left = Math.min(...layout.elements.map((item) => item.x));
   const top = Math.min(...layout.elements.map((item) => item.y));
   const right = Math.max(...layout.elements.map((item) => item.x + item.width));
-  const bottom = Math.max(...layout.elements.map((item) => item.y + item.height));
+  const bottom = Math.max(
+    ...layout.elements.map((item) => item.y + item.height),
+  );
   const offsetX = (layout.width - (right - left)) / 2 - left;
   const offsetY = (layout.height - (bottom - top)) / 2 - top;
 
@@ -882,6 +1491,13 @@ document.querySelector("#center-element").addEventListener("click", () => {
   renderAll();
 });
 document.querySelector("#undo-map").addEventListener("click", undo);
+document.querySelector("#redo-map").addEventListener("click", redo);
+document.addEventListener("eventmap:layout-saved", () => {
+  clearManagerDraft();
+  undoStack = [];
+  redoStack = [];
+  renderAll();
+});
 document
   .querySelector("#manager-zoom-in")
   .addEventListener("click", () => zoomAt(camera.scale * 1.25));
@@ -904,6 +1520,19 @@ document
   .querySelector("#close-map-preview")
   .addEventListener("click", () => previewDialog.close());
 window.addEventListener("keydown", (event) => {
+  const isEditingText = event.target.matches(
+    "input, textarea, select, [contenteditable='true']",
+  );
+  if (
+    (event.key === "Delete" || event.key === "Backspace") &&
+    !isEditingText &&
+    !previewDialog.open &&
+    selectedIds.size
+  ) {
+    event.preventDefault();
+    deleteSelectedElements();
+    return;
+  }
   if (
     event.code === "Space" &&
     !event.target.matches("input, textarea, button")
@@ -914,11 +1543,22 @@ window.addEventListener("keydown", (event) => {
   }
   if (
     (event.ctrlKey || event.metaKey) &&
-    event.key.toLowerCase() === "z" &&
-    !event.target.matches("input, textarea")
+    !isEditingText
   ) {
+    const key = event.key.toLowerCase();
+    if (key === "c" && copySelectedElements()) {
+      event.preventDefault();
+      return;
+    }
+    if (key === "v" && copiedElements.length) {
+      event.preventDefault();
+      pasteCopiedElements();
+      return;
+    }
+    if (key !== "z" && key !== "y") return;
     event.preventDefault();
-    undo();
+    if (key === "y" || event.shiftKey) redo();
+    else undo();
   }
 });
 window.addEventListener("keyup", (event) => {
@@ -933,4 +1573,8 @@ onManagerLanguageChange(() => {
 });
 initialiseManagerLanguage();
 renderAll();
-void loadGoogleSheetLayout();
+if (restoredDraft) {
+  message.textContent = managerT("draftRestored");
+} else {
+  void loadGoogleSheetLayout();
+}

@@ -39,14 +39,20 @@ export function addBooth(
   width = 64,
   height = 44,
   shape = "rectangle",
+  color = "#eff2f6",
+  fontSize = 12,
+  textColor = "#425066",
+  boothId = "",
+  mapLabel = "",
 ) {
-  const id = zone + String(number).padStart(2, "0");
+  const id = String(boothId || zone + String(number).padStart(2, "0")).trim();
   const shop = featuredShops[id];
-  const defaultName = state.lang === "lo" ? `ບູທ ${id}` : `Booth ${id}`;
+  const defaultName = id;
   const DEFAULT_LOGO = new URL("./assets/default_logo.png", document.baseURI)
     .href;
   booths.push({
     id,
+    mapLabel: String(mapLabel || id).trim(),
     zone,
     x,
     y,
@@ -56,7 +62,9 @@ export function addBooth(
     name: shop?.name || defaultName,
     category: shop?.category || "Other",
     logo: String(shop?.logo ?? "").trim() || DEFAULT_LOGO,
-    color: shop?.color || "#eff2f6",
+    color,
+    fontSize,
+    textColor,
     description: shop?.description || t("defaultDesc"),
     hours: shop?.hours || t("defaultHours"),
     facebook: String(shop?.facebook ?? "").trim(),
@@ -71,7 +79,7 @@ export function buildMapData(populateCategoryDropdownCb) {
     .elements.filter((element) => element.type === "booth")
     .forEach((booth) => {
       const id = booth.boothId || booth.id;
-      const zone = booth.zone || id.charAt(0);
+      const zone = booth.zone;
       const number = Number(id.replace(/\D/g, "")) || 1;
       addBooth(
         zone,
@@ -81,6 +89,11 @@ export function buildMapData(populateCategoryDropdownCb) {
         booth.width,
         booth.height,
         booth.shape,
+        booth.color,
+        booth.fontSize,
+        booth.textColor,
+        id,
+        booth.label_en,
       );
     });
 
@@ -101,9 +114,23 @@ function zoneStyle(zone) {
 function mapShape(item, attributes) {
   const centerX = item.x + item.width / 2;
   const centerY = item.y + item.height / 2;
+  if (item.type === "walkway") {
+    return svgElement("rect", {
+      ...attributes,
+      x: item.x,
+      y: item.y,
+      width: item.width,
+      height: item.height,
+      stroke: "none",
+    });
+  }
   if (item.shape === "circle") {
     return svgElement("ellipse", {
-      ...attributes, cx: centerX, cy: centerY, rx: item.width / 2, ry: item.height / 2,
+      ...attributes,
+      cx: centerX,
+      cy: centerY,
+      rx: item.width / 2,
+      ry: item.height / 2,
     });
   }
   if (item.shape === "triangle") {
@@ -119,18 +146,108 @@ function mapShape(item, attributes) {
     });
   }
   return svgElement("rect", {
-    ...attributes, x: item.x, y: item.y, width: item.width, height: item.height, rx: 8,
+    ...attributes,
+    x: item.x,
+    y: item.y,
+    width: item.width,
+    height: item.height,
+    rx: 8,
   });
 }
 
-function appendTree(group, item) {
-  const centerX = item.x + item.width / 2;
-  const crown = Math.min(item.width, item.height) * 0.24;
+function appendBlossom(group, cx, cy, size) {
+  const petal = size * 0.45;
+  [
+    [0, -size],
+    [size, 0],
+    [0, size],
+    [-size, 0],
+    [size * 0.7, -size * 0.7],
+  ].forEach(([x, y]) => {
+    group.append(
+      svgElement("circle", {
+        cx: cx + x,
+        cy: cy + y,
+        r: petal,
+        fill: "#fecdd3",
+      }),
+    );
+  });
   group.append(
-    svgElement("rect", { x: centerX - crown * 0.3, y: item.y + item.height * 0.58, width: crown * 0.6, height: item.height * 0.3, rx: 2, fill: "#8b5a2b" }),
-    svgElement("circle", { cx: centerX, cy: item.y + item.height * 0.42, r: crown, fill: item.color }),
-    svgElement("circle", { cx: centerX - crown * 0.62, cy: item.y + item.height * 0.54, r: crown * 0.78, fill: item.color }),
-    svgElement("circle", { cx: centerX + crown * 0.62, cy: item.y + item.height * 0.54, r: crown * 0.78, fill: item.color }),
+    svgElement("circle", { cx, cy, r: size * 0.38, fill: "#facc15" }),
+  );
+}
+
+function appendTree(group, item) {
+  const x = item.x;
+  const y = item.y;
+  const width = item.width;
+  const height = item.height;
+  const circle = (cx, cy, r, opacity = 1) =>
+    group.append(
+      svgElement("circle", {
+        cx,
+        cy,
+        r,
+        fill: item.color,
+        "fill-opacity": opacity,
+      }),
+    );
+
+  group.append(
+    svgElement("path", {
+      d: `M ${x + width * 0.43} ${y + height * 0.46} C ${x + width * 0.45} ${y + height * 0.66}, ${x + width * 0.36} ${y + height * 0.84}, ${x + width * 0.39} ${y + height} L ${x + width * 0.72} ${y + height} C ${x + width * 0.69} ${y + height * 0.82}, ${x + width * 0.59} ${y + height * 0.63}, ${x + width * 0.61} ${y + height * 0.46} Z`,
+      fill: "#8b6b53",
+    }),
+  );
+  circle(x + width * 0.5, y + height * 0.24, Math.min(width, height) * 0.24);
+  circle(
+    x + width * 0.28,
+    y + height * 0.43,
+    Math.min(width, height) * 0.25,
+    0.96,
+  );
+  circle(
+    x + width * 0.72,
+    y + height * 0.45,
+    Math.min(width, height) * 0.28,
+    0.92,
+  );
+  circle(
+    x + width * 0.5,
+    y + height * 0.59,
+    Math.min(width, height) * 0.3,
+    0.94,
+  );
+  circle(
+    x + width * 0.14,
+    y + height * 0.61,
+    Math.min(width, height) * 0.18,
+    0.9,
+  );
+  circle(
+    x + width * 0.88,
+    y + height * 0.62,
+    Math.min(width, height) * 0.18,
+    0.9,
+  );
+  appendBlossom(
+    group,
+    x + width * 0.31,
+    y + height * 0.3,
+    Math.min(width, height) * 0.06,
+  );
+  appendBlossom(
+    group,
+    x + width * 0.62,
+    y + height * 0.53,
+    Math.min(width, height) * 0.07,
+  );
+  appendBlossom(
+    group,
+    x + width * 0.84,
+    y + height * 0.63,
+    Math.min(width, height) * 0.06,
   );
 }
 
@@ -166,9 +283,14 @@ export function addZoneLabel(zone, x, y) {
 }
 
 let selectBoothRef = null;
+let clearSelectionRef = null;
 
 export function setSelectBoothHandler(handler) {
   selectBoothRef = handler;
+}
+
+export function setClearSelectionHandler(handler) {
+  clearSelectionRef = handler;
 }
 
 export function renderMap(applyFiltersCb) {
@@ -205,8 +327,13 @@ export function renderMap(applyFiltersCb) {
             x: item.x + item.width / 2,
             y: item.y + item.height / 2 + 4,
             "text-anchor": "middle",
-            "font-size": 12,
-            fill: "#334155",
+            "font-size": item.fontSize,
+            fill: item.textColor,
+            ...(item.type === "walkway" && item.height > item.width
+              ? {
+                  transform: `rotate(-90 ${item.x + item.width / 2} ${item.y + item.height / 2})`,
+                }
+              : {}),
           },
           label,
         ),
@@ -228,18 +355,21 @@ export function renderMap(applyFiltersCb) {
     });
 
     group.append(
-      mapShape(booth, { fill: color.background, stroke: color.border }),
+      mapShape(booth, {
+        fill: booth.color || color.background,
+        stroke: "#64748b",
+      }),
       svgElement(
         "text",
         {
           x: booth.x + booth.width / 2,
           y: booth.y + booth.height / 2 + 4,
           "text-anchor": "middle",
-          "font-size": 12,
-          fill: "#425066",
+          "font-size": booth.fontSize,
+          fill: booth.textColor,
           class: "booth-label",
         },
-        booth.id,
+        booth.mapLabel,
       ),
     );
 
@@ -307,7 +437,22 @@ export function renderMap(applyFiltersCb) {
       $("#gates").append(group);
     });
 
-  ["all", ...Object.keys(zones)].forEach((zone) => {
+  // Build filters from the booths currently placed on the map. This lets a
+  // newly-created zone appear without needing to edit the frontend config.
+  const mapZones = [
+    ...new Set(
+      booths.map((booth) => String(booth.zone || "").trim()).filter(Boolean),
+    ),
+  ].sort((left, right) =>
+    left.localeCompare(right, undefined, { numeric: true }),
+  );
+
+  // A saved selection may no longer exist after the manager changes a map.
+  if (state.zone !== "all" && !mapZones.includes(state.zone)) {
+    state.zone = "all";
+  }
+
+  ["all", ...mapZones].forEach((zone) => {
     const button = document.createElement("button");
     button.className = "zone-chip";
     button.dataset.zone = zone;
@@ -867,12 +1012,11 @@ export function setupMapInteractions() {
     // CHECK CLICK BOOTH
     // =====================================================
 
-    const shouldSelect =
+    const isTap =
       event.type === "pointerup" &&
       tap &&
       tap.pointerId === event.pointerId &&
       !tap.moved &&
-      tap.id &&
       pointers.size === 1;
 
     const selectedId = tap?.id || null;
@@ -922,8 +1066,12 @@ export function setupMapInteractions() {
     // SELECT BOOTH
     // =====================================================
 
-    if (shouldSelect && selectedId && selectBoothRef) {
-      selectBoothRef(selectedId, true, false);
+    if (isTap && selectedId && selectBoothRef) {
+      if (state.selected === selectedId && clearSelectionRef) {
+        clearSelectionRef();
+      } else {
+        selectBoothRef(selectedId, true, false);
+      }
     }
   }
 

@@ -1,41 +1,74 @@
 import { GOOGLE_SHEET_API } from "./config.js";
-import { setFeaturedShops, setEventInfo } from "./state.js";
+
+import { setFeaturedShops, setEventInfo, setEvent } from "./state.js";
+
 import { setMapLayout } from "./map-layout.js";
 
-const STORAGE_KEY = "eventmap_api_payload_v4";
+const STORAGE_KEY = "eventmap_api_payload_v5";
 
 function applyApiPayload(payload) {
   if (payload?.error) {
     throw new Error(payload.error);
   }
 
-  // Supports both the new API shape ({ booths, eventInfo }) and the old
-  // shape where booth ids such as A01 were at the top level.
   const shops =
     payload?.booths && typeof payload.booths === "object"
       ? payload.booths
       : payload;
 
+  // Booths
   setFeaturedShops(shops && typeof shops === "object" ? shops : {});
+
+  // EventInfo
   setEventInfo(payload?.eventInfo);
-  if (payload?.mapLayout) setMapLayout(payload.mapLayout);
+
+  // Event
+  setEvent(payload?.event);
+
+  // Map Layout
+  if (payload?.mapLayout) {
+    setMapLayout(payload.mapLayout);
+  }
+
   return shops;
 }
 
 export async function loadShopsFromGoogleSheet(onSuccessCallback) {
   try {
     const navigation = performance.getEntriesByType("navigation")[0];
-    const isRefresh = navigation?.type === "reload";
-    if (isRefresh) sessionStorage.removeItem(STORAGE_KEY);
 
+    const isRefresh = navigation?.type === "reload";
+
+    /*
+     * ถ้า Refresh หน้าเว็บ
+     * ให้โหลดข้อมูลจาก Google Sheet ใหม่
+     */
+    if (isRefresh) {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+
+    /*
+     * ตรวจสอบ Cache
+     */
     const cached = sessionStorage.getItem(STORAGE_KEY);
+
     if (cached) {
+      console.log("Using cached EventMap data.");
+
       const shops = applyApiPayload(JSON.parse(cached));
-      if (onSuccessCallback) onSuccessCallback(shops);
+
+      if (onSuccessCallback) {
+        onSuccessCallback(shops);
+      }
+
       return shops;
     }
 
-    console.log("Loading booth data from Google Sheet...");
+    /*
+     * ไม่มี Cache
+     * → โหลดจาก Google Sheet
+     */
+    console.log("Loading EventMap data from Google Sheet...");
 
     const response = await fetch(GOOGLE_SHEET_API);
 
@@ -44,7 +77,21 @@ export async function loadShopsFromGoogleSheet(onSuccessCallback) {
     }
 
     const payload = await response.json();
+
+    /*
+     * เอาข้อมูลทั้งหมดเข้า State
+     */
     const shops = applyApiPayload(payload);
+
+    /*
+     * Cache ทั้ง payload
+     *
+     * รวม:
+     * booths
+     * eventInfo
+     * event
+     * mapLayout
+     */
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 
     if (onSuccessCallback) {
@@ -53,28 +100,36 @@ export async function loadShopsFromGoogleSheet(onSuccessCallback) {
 
     return shops;
   } catch (error) {
-    console.error("Error loading shop data:", error);
+    console.error("Error loading EventMap data:", error);
+
+    throw error;
   }
 }
 
 /**
- * Loads the published map layout for Map Manager. This deliberately bypasses
- * the public-page session cache so a manager can refresh the current layout
- * that is stored in Google Sheets.
+ * Load map layout directly from Google Sheet.
+ *
+ * Source:
+ * MapLayout!A1 = layout_json
+ * MapLayout!A2:A... = JSON data
  */
 export async function loadMapLayoutFromGoogleSheet() {
-  const response = await fetch(GOOGLE_SHEET_API);
+  const response = await fetch(GOOGLE_SHEET_API + "?mapLayout=1", {
+    cache: "no-store",
+  });
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
 
   const payload = await response.json();
+
   if (payload?.error) {
     throw new Error(payload.error);
   }
+
   if (!payload?.mapLayout) {
-    throw new Error("Google Sheet does not contain a map layout yet.");
+    throw new Error("MapLayout!A2 does not contain a valid map layout.");
   }
 
   return setMapLayout(payload.mapLayout);

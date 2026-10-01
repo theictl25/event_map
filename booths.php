@@ -1,3 +1,12 @@
+<?php
+require __DIR__ . '/lib/auth.php';
+
+// The booth directory is also a public page, so it ends any Manager session.
+if (!empty($_SESSION['eventmap_admin'])) {
+    $_SESSION = [];
+    session_destroy();
+}
+?>
 <!doctype html>
 <html lang="en">
 

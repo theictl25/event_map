@@ -3,6 +3,7 @@ import { boothById, state } from "../shared/state.js";
 import {
   injectIconsSVG,
   renderHeader,
+  renderEvent,
   injectDialogs,
   injectMainContent,
 } from "./components.js";
@@ -17,6 +18,7 @@ import {
   renderMap,
   fitMap,
   setSelectBoothHandler,
+  setClearSelectionHandler,
   setupMapInteractions,
 } from "./map.js";
 import { loadShopsFromGoogleSheet } from "../shared/api.js";
@@ -24,9 +26,15 @@ import {
   populateCategoryDropdown,
   applyFilters,
   selectBooth,
+  clearSelectedBooth,
   setupUIEventListeners,
   detailHTML,
 } from "./ui.js";
+
+function setMapLoading(isLoading) {
+  const overlay = $("#map-loading");
+  if (overlay) overlay.hidden = !isLoading;
+}
 
 function initApp() {
   // 1. Inject shared layout components to eliminate HTML code duplication
@@ -37,6 +45,7 @@ function initApp() {
 
   // 2. Set up handler references and UI callbacks
   setSelectBoothHandler(selectBooth);
+  setClearSelectionHandler(clearSelectedBooth);
 
   registerUIUpdateCallback(() => {
     buildMapData(populateCategoryDropdown);
@@ -57,6 +66,7 @@ function initApp() {
     btn.addEventListener("click", (e) => {
       const lang = e.currentTarget.dataset.lang;
       if (lang) setLanguage(lang);
+      renderEvent();
     });
   });
 
@@ -64,15 +74,12 @@ function initApp() {
   setupMapInteractions();
 
   // 4. Initial render & Map Fit
-  updateLanguageUI();
   fitMap();
 
-  // 5. Select default booth or initial hash booth
+  // 5. Select only an explicitly linked booth. A normal page load starts
+  // without a selected booth, including after a browser refresh.
   const initialId = location.hash.slice(1).toUpperCase();
-  const defaultBooth = boothById.has(initialId)
-    ? initialId
-    : boothById.keys().next().value;
-  selectBooth(defaultBooth);
+  if (boothById.has(initialId)) selectBooth(initialId);
 
   // 6. Check for URL search params (e.g. directions=1)
   const urlParams = new URLSearchParams(location.search);
@@ -86,7 +93,9 @@ function initApp() {
 document.addEventListener("DOMContentLoaded", () => {
   initApp();
   // Fetch live booth data from Google Sheets API
+  setMapLoading(true);
   loadShopsFromGoogleSheet(() => {
+    renderEvent();
     // This also redraws the map through the registered UI callback and
     // replaces Information-dialog text with the current event's Sheet data.
     updateLanguageUI();
@@ -98,5 +107,5 @@ document.addEventListener("DOMContentLoaded", () => {
     if (boothById.has(selectedId)) {
       selectBooth(selectedId);
     }
-  });
+  }).finally(() => setMapLoading(false));
 });

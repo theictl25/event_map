@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+// Do not share PHP's default PHPSESSID cookie with other local PHP projects.
+// The Manager page and its save API must always read the same EventMap session.
+session_name('eventmap_manager_session');
 session_set_cookie_params([
+  'path' => '/',
   'httponly' => true,
   'samesite' => 'Lax',
   'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
