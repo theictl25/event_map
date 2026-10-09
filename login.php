@@ -41,10 +41,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <label>Username</label>
       <input name="username" required>
       <label>Password</label>
-      <input name="password" type="password" required>
+      <input name="password" type="password" id="password" required>
+      <div class="show-pass"><input type="checkbox" onclick="showPassword()">Show Password</div>
       <button class="button primary">Login</button>
     </form>
   </main>
+  <script>
+    function showPassword() {
+      var x = document.getElementById("password");
+      if (x.type === "password") {
+        x.type = "text";
+      } else {
+        x.type = "password";
+      }
+    }
+  </script>
 </body>
 
 </html>

@@ -1,5 +1,6 @@
 import { $, isBoothsPage } from "../shared/config.js";
 import { getEvent, state } from "../shared/state.js";
+
 export function renderEvent() {
   const event = getEvent();
   const lang = state.lang;
@@ -61,6 +62,9 @@ export function injectIconsSVG() {
         <circle cx="18" cy="19" r="3" />
         <path d="m9 10 6-3m-6 7 6 3" />
       </symbol>
+      <symbol id="i-facebook" viewBox="0 0 24 24">
+  <path fill="currentColor" d="M22 12a10 10 0 1 0-11.56 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.44 2.89h-2.34v6.99A10 10 0 0 0 22 12z"/>
+</symbol>
     </svg>
   `;
   document.body.insertAdjacentHTML("afterbegin", svgHTML);
@@ -131,14 +135,24 @@ export function injectDialogs() {
   const dialogsHTML = `
     <div id="app-dialogs-container">
       <dialog class="detail-dialog" id="detail-dialog" aria-label="Booth details">
-        <div class="dialog-heading">
-          <span data-i18n="dialogDetailsTitle">Booth details</span>
-          <button class="close-button" id="close-detail" aria-label="Close booth details">
-            ×
-          </button>
-        </div>
-        <div id="mobile-detail"></div>
-      </dialog>
+
+  <div class="detail-drag-handle" aria-hidden="true"></div>
+
+  <div class="dialog-heading">
+    <span data-i18n="dialogDetailsTitle">Booth details</span>
+
+    <button
+      class="close-button"
+      id="close-detail"
+      aria-label="Close booth details"
+    >
+      ×
+    </button>
+  </div>
+
+  <div id="mobile-detail"></div>
+
+</dialog>
 
       <dialog class="info-dialog" id="info-dialog" aria-labelledby="info-title">
         <h2 id="info-title" data-i18n="infoTitle">Welcome to Event Map</h2>
@@ -216,14 +230,15 @@ export function injectMainContent() {
           <option value="Plants" data-i18n="catPlants">Plants</option>
           <option value="Other" data-i18n="catOther">Other</option>
         </select>
-        <button class="reset-filter" id="reset-all" data-i18n="resetFilter" >
-         Reset Filter
-        </button>
+        <!-- <button class="reset-filter" id="reset-all" data-i18n="resetFilter" >
+          Reset Filter
+         </button> -->
       </div>
       
       <div class="zone-filters" id="zone-filters" aria-label="Filter by zone"></div>
 
       <div class="panel map-shell">
+
         <div class="map-viewport" id="viewport" tabindex="0"
           aria-label="Floor plan. Drag to pan, pinch or use controls to zoom. Arrow keys pan; plus and minus zoom.">
           <svg class="floor-svg" id="floor-svg" xmlns="http://www.w3.org/2000/svg" aria-label="Event floor plan">
@@ -263,7 +278,7 @@ export function injectMainContent() {
 
     <div class="map-bottom">
 
-  <div class="legend">
+  <!--<div class="legend">
     <span>
       <i class="legend-dot"></i>
       <span data-i18n="entranceLegend">Entrance</span>
@@ -273,8 +288,8 @@ export function injectMainContent() {
       <i class="legend-dot exit"></i>
       <span data-i18n="exitLegend">Exit</span>
     </span>
-  </div>
-
+  </div> -->
+         
   <div class="map-actions">
 
     <div class="map-controls" aria-label="Map zoom controls">
@@ -313,10 +328,11 @@ export function injectMainContent() {
 
   </div>
 
-</div>
+
+</div> 
       </div>
 
-      <p class="route-notice" id="route-notice" hidden></p>
+<p class="route-notice" id="route-notice"></p>
     </section>
 
     <!-- Booth detail panel (right / desktop only) -->

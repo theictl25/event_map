@@ -6,6 +6,25 @@ if (!empty($_SESSION['eventmap_admin'])) {
     $_SESSION = [];
     session_destroy();
 }
+
+require_once __DIR__ . '/lib/stats.php';
+$visitorCookie = 'eventmap_visitor_sid';
+$vsid = $_COOKIE[$visitorCookie] ?? '';
+if (empty($vsid)) {
+    try {
+        $vsid = bin2hex(random_bytes(6)) . dechex(time());
+    } catch (\Throwable $_) {
+        $vsid = uniqid('v', true);
+    }
+    setcookie($visitorCookie, $vsid, [
+        'expires' => time() + 86400 * 30,
+        'path' => '/',
+        'httponly' => false,
+        'samesite' => 'Lax',
+        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+    ]);
+}
+record_visitor_ping($vsid, 'ping');
 ?>
 <!doctype html>
 <html lang="en">

@@ -46,7 +46,7 @@ export function addBooth(
   mapLabel = "",
 ) {
   const id = String(boothId || zone + String(number).padStart(2, "0")).trim();
-  const shop = featuredShops[id];
+  const shop = featuredShops[id] || {};
   const defaultName = id;
   const DEFAULT_LOGO = new URL("./assets/default_logo.png", document.baseURI)
     .href;
@@ -62,6 +62,7 @@ export function addBooth(
     name: shop?.name || defaultName,
     category: shop?.category || "Other",
     logo: String(shop?.logo ?? "").trim() || DEFAULT_LOGO,
+    images: Array.isArray(shop?.images) ? shop.images : [],
     color,
     fontSize,
     textColor,
@@ -93,7 +94,10 @@ export function buildMapData(populateCategoryDropdownCb) {
         booth.fontSize,
         booth.textColor,
         id,
-        booth.label_en,
+        (state.lang === "lo" ? booth.label_lo : booth.label_en) ||
+          booth.label_en ||
+          booth.label_lo ||
+          id,
       );
     });
 
@@ -293,6 +297,121 @@ export function setClearSelectionHandler(handler) {
   clearSelectionRef = handler;
 }
 
+function splitGraphemes(text) {
+  if (typeof Intl !== "undefined" && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter(undefined, {
+      granularity: "grapheme",
+    });
+    return Array.from(segmenter.segment(text), (s) => s.segment);
+  }
+  return Array.from(text);
+}
+
+function graphemeLength(text) {
+  return splitGraphemes(text).length;
+}
+
+function wrapItemLabel(
+  label,
+  width,
+  height,
+  fontSize,
+  verticalWalkway = false,
+) {
+  const text = String(label || "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .trim();
+  if (!text) return [];
+
+  const size = Math.max(1, Number(fontSize) || 12);
+  const availableWidth = (verticalWalkway ? height : width) - 10;
+  const maximumCharacters = Math.max(
+    3,
+    Math.floor(availableWidth / (size * 0.6)),
+  );
+  const lines = [];
+
+  text.split(/\r?\n/).forEach((paragraph) => {
+    const trimmed = paragraph.trim();
+    if (!trimmed) return;
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    let line = "";
+
+    words.forEach((word) => {
+      const candidates = splitGraphemes(word);
+      const chunks = [];
+      while (candidates.length) {
+        chunks.push(candidates.splice(0, maximumCharacters).join(""));
+      }
+
+      chunks.forEach((chunk) => {
+        const next = line ? `${line} ${chunk}` : chunk;
+        if (graphemeLength(next) <= maximumCharacters) {
+          line = next;
+        } else {
+          if (line) lines.push(line);
+          line = chunk;
+        }
+      });
+    });
+
+    if (line) lines.push(line);
+  });
+
+  return lines;
+}
+
+function createItemTextElement({
+  lines,
+  fontSize,
+  textColor,
+  centerX,
+  centerY,
+  verticalWalkway = false,
+  className = "",
+}) {
+  if (!lines || !lines.length) return null;
+
+  const size = Math.max(1, Number(fontSize) || 12);
+  const lineHeight = size * 1.2;
+  const firstLineY =
+    centerY - (lineHeight * (lines.length - 1)) / 2 + size * 0.35;
+
+  const attributes = {
+    x: centerX,
+    y: firstLineY,
+    "text-anchor": "middle",
+    "font-size": size,
+    fill: textColor || "#425066",
+  };
+
+  if (className) {
+    attributes.class = className;
+  }
+
+  if (verticalWalkway) {
+    attributes.transform = `rotate(-90 ${centerX} ${centerY})`;
+  }
+
+  const textElement = svgElement("text", attributes);
+
+  lines.forEach((line, index) => {
+    textElement.append(
+      svgElement(
+        "tspan",
+        {
+          x: centerX,
+          dy: index ? lineHeight : 0,
+        },
+        line,
+      ),
+    );
+  });
+
+  return textElement;
+}
+
 export function renderMap(applyFiltersCb) {
   const size = mapSize();
   $("#map-background")?.setAttribute("width", size.width);
@@ -320,24 +439,26 @@ export function renderMap(applyFiltersCb) {
             item.label_en ||
             item.label_lo ||
             item.type;
-      group.append(
-        svgElement(
-          "text",
-          {
-            x: item.x + item.width / 2,
-            y: item.y + item.height / 2 + 4,
-            "text-anchor": "middle",
-            "font-size": item.fontSize,
-            fill: item.textColor,
-            ...(item.type === "walkway" && item.height > item.width
-              ? {
-                  transform: `rotate(-90 ${item.x + item.width / 2} ${item.y + item.height / 2})`,
-                }
-              : {}),
-          },
-          label,
-        ),
+      const verticalWalkway =
+        item.type === "walkway" && item.height > item.width;
+      const lines = wrapItemLabel(
+        label,
+        item.width,
+        item.height,
+        item.fontSize,
+        verticalWalkway,
       );
+      const textElement = createItemTextElement({
+        lines,
+        fontSize: item.fontSize,
+        textColor: item.textColor || "#334155",
+        centerX: item.x + item.width / 2,
+        centerY: item.y + item.height / 2,
+        verticalWalkway,
+      });
+      if (textElement) {
+        group.append(textElement);
+      }
       $("#map-elements").append(group);
     });
 
@@ -354,30 +475,50 @@ export function renderMap(applyFiltersCb) {
       "data-id": booth.id,
     });
 
+    const lines = wrapItemLabel(
+      booth.mapLabel,
+      booth.width,
+      booth.height,
+      booth.fontSize,
+      false,
+    );
+    const textElement = createItemTextElement({
+      lines,
+      fontSize: booth.fontSize,
+      textColor: booth.textColor,
+      centerX: booth.x + booth.width / 2,
+      centerY: booth.y + booth.height / 2,
+      verticalWalkway: false,
+      className: "booth-label",
+    });
+
     group.append(
       mapShape(booth, {
         fill: booth.color || color.background,
         stroke: "#64748b",
       }),
-      svgElement(
-        "text",
-        {
-          x: booth.x + booth.width / 2,
-          y: booth.y + booth.height / 2 + 4,
-          "text-anchor": "middle",
-          "font-size": booth.fontSize,
-          fill: booth.textColor,
-          class: "booth-label",
-        },
-        booth.mapLabel,
-      ),
     );
+    if (textElement) {
+      group.append(textElement);
+    }
+
+    // group.addEventListener("click", (event) => {
+    //   event.preventDefault();
+    //   event.stopPropagation();
+
+    //   if (selectBoothRef) {
+    //     selectBoothRef(booth.id, true, false);
+    //   }
+    // });
 
     group.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         event.stopPropagation();
-        if (selectBoothRef) selectBoothRef(booth.id, true, true);
+
+        if (selectBoothRef) {
+          selectBoothRef(booth.id, true, true);
+        }
       }
     });
 
@@ -704,10 +845,28 @@ export function setupMapInteractions() {
 
       delta = clamp(delta, -120, 120);
 
-      if (Math.abs(delta) < 0.01) return;
+      const hasDeltaX = Math.abs(event.deltaX || 0) >= 0.01;
+      const hasDeltaY = Math.abs(delta) >= 0.01;
+      if (!hasDeltaX && !hasDeltaY) return;
 
       // =====================================================
-      // SHIFT + SCROLL = PAN VERTICAL
+      // CTRL + SCROLL = ZOOM
+      // =====================================================
+
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+
+        const point = localPoint(event);
+
+        const factor = Math.exp(-delta * MAP_CONFIG.wheelSensitivity);
+
+        zoomAt(factor, point.x, point.y);
+
+        return;
+      }
+
+      // =====================================================
+      // SHIFT + SCROLL = PAN HORIZONTAL
       // =====================================================
 
       if (event.shiftKey) {
@@ -715,7 +874,7 @@ export function setupMapInteractions() {
 
         stopAnimation();
 
-        state.y -= delta;
+        state.x -= delta;
 
         constrain();
         paint();
@@ -744,16 +903,27 @@ export function setupMapInteractions() {
       }
 
       // =====================================================
-      // NORMAL SCROLL = ZOOM
+      // NORMAL SCROLL = PAN MAP UP / DOWN
       // =====================================================
 
       event.preventDefault();
 
-      const point = localPoint(event);
+      stopAnimation();
 
-      const factor = Math.exp(-delta * MAP_CONFIG.wheelSensitivity);
+      state.y -= delta;
 
-      zoomAt(factor, point.x, point.y);
+      if (hasDeltaX) {
+        let deltaX = event.deltaX;
+        if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+          deltaX *= 16;
+        } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+          deltaX *= window.innerWidth;
+        }
+        state.x -= clamp(deltaX, -120, 120);
+      }
+
+      constrain();
+      paint();
     },
     {
       passive: false,
@@ -1066,11 +1236,24 @@ export function setupMapInteractions() {
     // SELECT BOOTH
     // =====================================================
 
+    // if (isTap && selectedId && selectBoothRef) {
+    //   if (state.selected === selectedId && clearSelectionRef) {
+    //     clearSelectionRef();
+    //   } else {
+    //     selectBoothRef(selectedId, true, false);
+    //   }
+    // }
+
+    // if (isTap && selectedId && selectBoothRef) {
+    //   selectBoothRef(selectedId, true, false);
+    // }
     if (isTap && selectedId && selectBoothRef) {
       if (state.selected === selectedId && clearSelectionRef) {
+        // กด booth เดิมซ้ำ -> ยกเลิกการเลือก
         clearSelectionRef();
       } else {
-        selectBoothRef(selectedId, true, false);
+        const isMobile = !desktopQuery.matches;
+        selectBoothRef(selectedId, true, isMobile);
       }
     }
   }

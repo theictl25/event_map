@@ -21,7 +21,10 @@ import {
   setClearSelectionHandler,
   setupMapInteractions,
 } from "./map.js";
-import { loadShopsFromGoogleSheet } from "../shared/api.js";
+import {
+  loadShopsFromGoogleSheet,
+  trackVisitorSession,
+} from "../shared/api.js";
 import {
   populateCategoryDropdown,
   applyFilters,
@@ -29,6 +32,8 @@ import {
   clearSelectedBooth,
   setupUIEventListeners,
   detailHTML,
+  initDetailDrag,
+  initDetailBackdrop,
 } from "./ui.js";
 
 function setMapLoading(isLoading) {
@@ -42,6 +47,8 @@ function initApp() {
   renderHeader();
   injectMainContent(); // Fills <main> with shared directory + map + detail HTML
   injectDialogs();
+  initDetailDrag();
+  initDetailBackdrop();
 
   // 2. Set up handler references and UI callbacks
   setSelectBoothHandler(selectBooth);
@@ -80,18 +87,12 @@ function initApp() {
   // without a selected booth, including after a browser refresh.
   const initialId = location.hash.slice(1).toUpperCase();
   if (boothById.has(initialId)) selectBooth(initialId);
-
-  // 6. Check for URL search params (e.g. directions=1)
-  const urlParams = new URLSearchParams(location.search);
-  if (urlParams.get("directions") === "1" && state.selected) {
-    const directionsBtn = document.querySelector('[data-action="directions"]');
-    if (directionsBtn) directionsBtn.click();
-  }
 }
 
 // Initialize application DOM
 document.addEventListener("DOMContentLoaded", () => {
   initApp();
+  trackVisitorSession();
   // Fetch live booth data from Google Sheets API
   setMapLoading(true);
   loadShopsFromGoogleSheet(() => {
@@ -103,9 +104,19 @@ document.addEventListener("DOMContentLoaded", () => {
     // Refit after it has replaced the initial local layout.
     fitMap();
 
-    const selectedId = state.selected;
-    if (boothById.has(selectedId)) {
-      selectBooth(selectedId);
+    // Re-select booth from URL hash after fresh data is loaded
+    const hashId = location.hash.slice(1).toUpperCase();
+    if (boothById.has(hashId)) {
+      selectBooth(hashId, false, true);
+
+      // Trigger directions if redirected from booths page with ?directions=1
+      const urlParams = new URLSearchParams(location.search);
+      if (urlParams.get("directions") === "1") {
+        const directionsBtn = document.querySelector(
+          '[data-action="directions"]',
+        );
+        if (directionsBtn) directionsBtn.click();
+      }
     }
   }).finally(() => setMapLoading(false));
 });

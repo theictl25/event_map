@@ -303,8 +303,24 @@ function itemLabel(item) {
   return translated || item.boothId || item.id;
 }
 
+function splitGraphemes(text) {
+  if (typeof Intl !== "undefined" && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    return Array.from(segmenter.segment(text), (s) => s.segment);
+  }
+  return Array.from(text);
+}
+
+function graphemeLength(text) {
+  return splitGraphemes(text).length;
+}
+
 function wrapItemLabel(item, verticalWalkway) {
-  const label = item.type === "tree" ? "" : String(itemLabel(item)).trim();
+  const rawLabel = item.type === "tree" ? "" : String(itemLabel(item) || "");
+  const label = rawLabel
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .trim();
   if (!label) return [];
 
   const fontSize = Math.max(1, Number(item.fontSize) || 12);
@@ -316,11 +332,13 @@ function wrapItemLabel(item, verticalWalkway) {
   const lines = [];
 
   label.split(/\r?\n/).forEach((paragraph) => {
-    const words = paragraph.split(/\s+/).filter(Boolean);
+    const trimmed = paragraph.trim();
+    if (!trimmed) return;
+    const words = trimmed.split(/\s+/).filter(Boolean);
     let line = "";
 
     words.forEach((word) => {
-      const candidates = Array.from(word);
+      const candidates = splitGraphemes(word);
       const chunks = [];
       while (candidates.length) {
         chunks.push(candidates.splice(0, maximumCharacters).join(""));
@@ -328,7 +346,7 @@ function wrapItemLabel(item, verticalWalkway) {
 
       chunks.forEach((chunk) => {
         const next = line ? `${line} ${chunk}` : chunk;
-        if (next.length <= maximumCharacters) {
+        if (graphemeLength(next) <= maximumCharacters) {
           line = next;
         } else {
           if (line) lines.push(line);
@@ -348,7 +366,7 @@ function itemLabelMarkup(item, centerX, centerY, verticalWalkway) {
   if (!lines.length) return "";
 
   const fontSize = Math.max(1, Number(item.fontSize) || 12);
-  const lineHeight = fontSize * 1.15;
+  const lineHeight = fontSize * 1.2;
   const firstLineY =
     centerY - (lineHeight * (lines.length - 1)) / 2 + fontSize * 0.35;
 
@@ -745,6 +763,14 @@ function renderInspector() {
     '" value="' +
     escapeHTML(item[key] ?? "") +
     '"></label>';
+  const multilineField = (label, key) =>
+    "<label>" +
+    label +
+    '<textarea rows="2" data-key="' +
+    key +
+    '">' +
+    escapeHTML(item[key] ?? "") +
+    "</textarea></label>";
   const shapeField =
     "<label>" +
     managerT("shape") +
@@ -768,8 +794,8 @@ function renderInspector() {
     ": " +
     escapeHTML(item.id) +
     "</div>" +
-    field(managerT("laoName"), "label_lo") +
-    field(managerT("englishName"), "label_en") +
+    multilineField(managerT("laoName"), "label_lo") +
+    multilineField(managerT("englishName"), "label_en") +
     (item.type === "booth"
       ? field(managerT("boothId"), "boothId") + field(managerT("zone"), "zone")
       : "") +
@@ -811,7 +837,7 @@ function renderLayers() {
       '"><span class="layer-swatch" style="background:' +
       escapeHTML(item.color) +
       '"></span><span><strong>' +
-      escapeHTML(itemLabel(item)) +
+      escapeHTML(itemLabel(item).replace(/\r?\n/g, " ")) +
       "</strong><small>" +
       managerT("types." + item.type) +
       "</small></span></button>";

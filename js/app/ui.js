@@ -16,6 +16,14 @@ function getBoothLogo(booth) {
 
   return logo || defaultLogo;
 }
+
+function getBoothImages(booth) {
+  if (!Array.isArray(booth.images)) return [];
+
+  return booth.images
+    .map((image) => String(image || "").trim())
+    .filter(Boolean);
+}
 export function icon(name) {
   return `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 }
@@ -87,7 +95,8 @@ export function filteredBooths() {
   return booths.filter((booth) => {
     const categoryName = getCategoryName(booth.category);
     const searchable =
-      `${booth.id} ${booth.name} Zone ${booth.zone} ໂຊນ ${booth.zone} ${booth.category} ${categoryName} ${booth.description}`.toLowerCase();
+      // `${booth.id} ${booth.name} Zone ${booth.zone} ໂຊນ ${booth.zone} ${booth.category} ${categoryName} ${booth.description}`.toLowerCase();
+      `${booth.id} ${booth.name} ${booth.category} ${categoryName} `.toLowerCase();
 
     return (
       searchable.includes(state.query) &&
@@ -102,6 +111,20 @@ export function renderList(results) {
   if (!container) return;
   container.replaceChildren();
 
+  const directoryTitle = $("#directory-title");
+  if (directoryTitle) {
+    if (state.zone && state.zone !== "all") {
+      delete directoryTitle.dataset.i18n;
+      directoryTitle.textContent =
+        state.lang === "lo"
+          ? `ລາຍການບູທຂອງໂຊນ ${state.zone}`
+          : `Zone ${state.zone} Booth List`;
+    } else {
+      directoryTitle.dataset.i18n = "directoryTitle";
+      directoryTitle.textContent = t("directoryTitle");
+    }
+  }
+
   const resultCount = $("#result-count");
   if (resultCount) resultCount.textContent = t("boothCount", results.length);
 
@@ -115,7 +138,8 @@ export function renderList(results) {
 
   const sorted = [...results].sort(
     (a, b) =>
-      Number(b.featured) - Number(a.featured) || a.id.localeCompare(b.id),
+      Number(b.featured) - Number(a.featured) ||
+      a.id.localeCompare(b.id, undefined, { numeric: true }),
   );
 
   sorted.forEach((booth) => {
@@ -220,13 +244,80 @@ export function detailHTML(booth) {
   const boothText =
     state.lang === "lo" ? `ບູທ ${booth.id}` : `Booth ${booth.id}`;
   const categoryName = getCategoryName(booth.category);
+  const images = getBoothImages(booth);
+
+  const galleryHTML = images.length
+    ? `
+        <section class="detail-gallery" data-index="0"
+             data-images="${escapeHTML(JSON.stringify(images))}"
+             aria-label="${escapeHTML(booth.name)} photos">
+      <div class="detail-gallery-main">
+        <img
+          src="${escapeHTML(images[0])}"
+          alt="${escapeHTML(booth.name)}"
+          data-action="gallery-zoom"
+          loading="lazy"
+          onerror="this.style.display='none';"
+        >
+        ${
+          images.length > 1
+            ? `
+        <span class="gallery-counter">1 / ${images.length}</span>
+        <button type="button" class="gallery-nav prev" data-action="gallery-prev" aria-label="Previous">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <button type="button" class="gallery-nav next" data-action="gallery-next" aria-label="Next">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>`
+            : ""
+        }
+      </div>
+
+      ${
+        images.length > 1
+          ? `
+      <div class="detail-gallery-thumbs">
+        ${images
+          .map(
+            (image, index) => `
+          <button type="button" class="gallery-thumb ${index === 0 ? "active" : ""}"
+                  ${index >= 4 ? "hidden" : ""}
+                  data-action="gallery" data-index="${index}" data-src="${escapeHTML(image)}"
+                  aria-label="${escapeHTML(booth.name)} ${index + 1}">
+            <img src="${escapeHTML(image)}" alt="" loading="lazy"
+                 onerror="this.style.visibility='hidden';">
+            <span class="thumb-more" hidden></span>
+          </button>`,
+          )
+          .join("")}
+      </div>
+      <div class="gallery-dots">
+        ${images
+          .map(
+            (_, index) => `
+          <button type="button" class="gallery-dot ${index === 0 ? "active" : ""}"
+                  data-action="gallery" data-index="${index}"
+                  aria-label="${index + 1}"></button>`,
+          )
+          .join("")}
+      </div>`
+          : ""
+      }
+    </section>
+  `
+    : "";
   const facebookURL = getSafeFacebookURL(booth.facebook);
   const facebookHTML = facebookURL
     ? `
-        <div class="fact">
-          <span aria-hidden="true">f</span>
-          <a href="${escapeHTML(facebookURL)}" target="_blank" rel="noopener noreferrer">${t("facebook")}</a>
-        </div>`
+      <div class="fact">
+        
+        <a href="${escapeHTML(facebookURL)}" target="_blank" rel="noopener noreferrer">
+        <svg class="icon fb-logo" viewBox="0 0 24 24" aria-hidden="true">
+          <rect width="24" height="24" rx="5" fill="#1877F2"/>
+          <path fill="#fff" d="M16.67 15.47l.53-3.47h-3.33V9.75c0-.95.47-1.88 1.96-1.88h1.51V4.92s-1.37-.23-2.68-.23c-2.74 0-4.53 1.66-4.53 4.67V12H7.08v3.47h3.05V24h3.74v-8.53h2.8z"/>
+        </svg>
+        ${t("facebook")}</a>
+      </div>`
     : "";
 
   return `
@@ -236,18 +327,21 @@ export function detailHTML(booth) {
     </div>
 
     <div class="detail-body">
-      <h2>${escapeHTML(booth.name)}</h2>
+      <header class="detail-header">
+        <span class="detail-logo" style="--logo-bg:${booth.color}">
+          <img
+            src="${escapeHTML(logo)}"
+            alt="${escapeHTML(booth.name)} logo"
+            onerror="this.onerror=null; this.src='./assets/default_logo.png';"
+          >
+        </span>
+        <div class="detail-title">
+          <h2>${escapeHTML(booth.name)}</h2>
+          <p class="detail-subtitle">${boothZone} · ${boothText}</p>
+        </div>
+      </header>
 
-      <div class="detail-hero" style="--hero-bg:${booth.color}">
-        <span class="hero-logo">
-  <img
-    src="${escapeHTML(logo)}"
-    alt="${escapeHTML(booth.name)} logo"
-     onerror="this.onerror=null; this.src='./assets/default_logo.png';"
-  >
-</span>
-        <span class="hero-caption">${escapeHTML(categoryName)}</span>
-      </div>
+      ${galleryHTML}
 
       <section class="detail-section">
         <h3>${t("aboutTitle")}</h3>
@@ -257,7 +351,7 @@ export function detailHTML(booth) {
       <div class="detail-facts">
         <div class="fact">
           ${icon("pin")}
-          <span><strong>${boothZone}</strong></span>/
+          <span><strong>${boothZone}</strong></span>|
           <span><strong>${boothText}</strong></span>
         </div>
         <div class="fact">
@@ -287,7 +381,10 @@ export function selectBooth(id, openMobile = false, center = false) {
     const routePath = $("#route-path");
     const routeNotice = $("#route-notice");
     if (routePath) routePath.setAttribute("d", "");
-    if (routeNotice) routeNotice.hidden = true;
+    if (routeNotice) {
+      routeNotice.classList.remove("is-visible");
+      routeNotice.textContent = "";
+    }
   }
 
   state.selected = id;
@@ -322,7 +419,19 @@ export function selectBooth(id, openMobile = false, center = false) {
 
   if (openMobile && !desktopQuery.matches) {
     const dialog = $("#detail-dialog");
-    if (dialog && !dialog.open) dialog.showModal();
+
+    if (dialog) {
+      dialog.classList.remove("closing", "expanded", "dragging");
+      dialog.style.transform = "";
+
+      if (!dialog.open) {
+        dialog.showModal();
+
+        requestAnimationFrame(() => {
+          dialog.classList.add("is-open");
+        });
+      }
+    }
   }
 
   const announce = $("#announcement");
@@ -367,12 +476,18 @@ export function clearSelectedBooth() {
   if (mobileDetail) mobileDetail.replaceChildren();
 
   const detailDialog = $("#detail-dialog");
-  if (detailDialog?.open) detailDialog.close();
+
+  if (detailDialog?.open) {
+    closeDetailDialog();
+  }
 
   const routePath = $("#route-path");
   const routeNotice = $("#route-notice");
   if (routePath) routePath.setAttribute("d", "");
-  if (routeNotice) routeNotice.hidden = true;
+  if (routeNotice) {
+    routeNotice.classList.remove("is-visible");
+    routeNotice.textContent = "";
+  }
 
   try {
     const url = new URL(location.href);
@@ -420,7 +535,6 @@ export function showDirections() {
 
   const routeNotice = $("#route-notice");
   if (routeNotice) {
-    routeNotice.hidden = false;
     routeNotice.textContent = t(
       "routeNotice",
       route.entrance,
@@ -428,10 +542,14 @@ export function showDirections() {
       booth.name,
       booth.id,
     );
+    routeNotice.classList.add("is-visible");
   }
 
   const detailDialog = $("#detail-dialog");
-  if (detailDialog && detailDialog.open) detailDialog.close();
+
+  if (detailDialog && detailDialog.open) {
+    closeDetailDialog();
+  }
 
   const mapSection = $("#map-section");
   if (mapSection) {
@@ -491,6 +609,152 @@ export async function shareBooth() {
   }
 }
 
+function closeDetailDialog() {
+  const dialog = $("#detail-dialog");
+
+  if (!dialog || !dialog.open) return;
+
+  dialog.classList.remove("expanded");
+  dialog.classList.add("closing");
+
+  setTimeout(() => {
+    dialog.classList.remove("closing");
+    dialog.close();
+
+    dialog.style.transform = "";
+  }, 350);
+}
+function setGalleryIndex(gallery, index) {
+  const thumbs = [...gallery.querySelectorAll(".gallery-thumb")];
+  const dots = [...gallery.querySelectorAll(".gallery-dot")];
+  const total = thumbs.length;
+  if (!total) return;
+
+  const VISIBLE = 4;
+  index = (index + total) % total;
+  gallery.dataset.index = index;
+
+  const main = gallery.querySelector(".detail-gallery-main img");
+  if (main) {
+    main.style.display = "";
+    main.src = thumbs[index].dataset.src;
+  }
+
+  const counter = gallery.querySelector(".gallery-counter");
+  if (counter) counter.textContent = `${index + 1} / ${total}`;
+
+  // เลื่อนหน้าต่าง thumbnail ให้รูปที่เลือกอยู่ในช่วงที่มองเห็นเสมอ
+  let start = 0;
+  if (total > VISIBLE) {
+    start = Math.min(Math.max(index - (VISIBLE - 2), 0), total - VISIBLE);
+  }
+  const remaining = total - (start + VISIBLE);
+
+  thumbs.forEach((thumb, i) => {
+    const inWindow = i >= start && i < start + VISIBLE;
+    thumb.hidden = !inWindow;
+    thumb.classList.toggle("active", i === index);
+
+    const more = thumb.querySelector(".thumb-more");
+    if (more) {
+      const showMore = i === start + VISIBLE - 1 && remaining > 0;
+      more.hidden = !showMore;
+      more.textContent = showMore ? `+${remaining}` : "";
+    }
+  });
+
+  dots.forEach((dot, i) => dot.classList.toggle("active", i === index));
+}
+
+let lightbox = null;
+const lightboxState = { sources: [], index: 0, gallery: null };
+
+function ensureLightbox() {
+  if (lightbox) return lightbox;
+
+  lightbox = document.createElement("dialog");
+  lightbox.className = "lightbox";
+  lightbox.innerHTML = `
+    <button type="button" class="lightbox-close" data-lb="close" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <span class="lightbox-counter"></span>
+    <button type="button" class="lightbox-nav prev" data-lb="prev" aria-label="Previous">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+    </button>
+    <img class="lightbox-img" alt="">
+    <button type="button" class="lightbox-nav next" data-lb="next" aria-label="Next">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  `;
+  document.body.append(lightbox);
+
+  lightbox.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-lb]")?.dataset.lb;
+    if (action === "prev") showLightbox(lightboxState.index - 1);
+    else if (action === "next") showLightbox(lightboxState.index + 1);
+    else if (action === "close" || event.target === lightbox) lightbox.close();
+  });
+
+  lightbox.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowLeft") showLightbox(lightboxState.index - 1);
+    if (event.key === "ArrowRight") showLightbox(lightboxState.index + 1);
+  });
+
+  // ปัดซ้าย/ขวาเพื่อเปลี่ยนรูป
+  let startX = 0;
+  lightbox.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+  });
+  lightbox.addEventListener("pointerup", (event) => {
+    if (event.target.closest("[data-lb]")) return;
+    const dx = event.clientX - startX;
+    if (Math.abs(dx) > 50)
+      showLightbox(lightboxState.index + (dx < 0 ? 1 : -1));
+  });
+
+  // ปิดแล้วให้รูปใน gallery ตรงกับที่ดูล่าสุด
+  lightbox.addEventListener("close", () => {
+    const { gallery, index } = lightboxState;
+    if (gallery?.isConnected) setGalleryIndex(gallery, index);
+  });
+
+  return lightbox;
+}
+
+function showLightbox(index) {
+  const { sources } = lightboxState;
+  const total = sources.length;
+  if (!total) return;
+
+  index = (index + total) % total;
+  lightboxState.index = index;
+
+  const img = lightbox.querySelector(".lightbox-img");
+  img.src = sources[index];
+
+  lightbox.querySelector(".lightbox-counter").textContent =
+    `${index + 1} / ${total}`;
+  lightbox.classList.toggle("single", total < 2);
+}
+
+function openLightbox(gallery) {
+  let sources = [];
+  try {
+    sources = JSON.parse(gallery.dataset.images || "[]");
+  } catch {
+    sources = [];
+  }
+  if (!sources.length) return;
+
+  ensureLightbox();
+  lightboxState.sources = sources;
+  lightboxState.gallery = gallery;
+  showLightbox(Number(gallery.dataset.index || 0));
+
+  if (!lightbox.open) lightbox.showModal();
+}
+
 export function setupUIEventListeners() {
   const brand = document.querySelector(".brand");
   if (brand) {
@@ -546,17 +810,28 @@ export function setupUIEventListeners() {
   }
 
   const closeDetail = $("#close-detail");
+
   if (closeDetail) {
-    closeDetail.addEventListener("click", () => {
-      const dialog = $("#detail-dialog");
-      if (dialog) dialog.close();
+    closeDetail.addEventListener("click", closeDetailDialog);
+  }
+  const detailDialog = $("#detail-dialog");
+
+  if (detailDialog) {
+    detailDialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeDetailDialog();
+    });
+
+    detailDialog.addEventListener("close", () => {
+      detailDialog.classList.remove("is-open", "closing");
     });
   }
 
   desktopQuery.addEventListener("change", (event) => {
     const dialog = $("#detail-dialog");
+
     if (event.matches && dialog && dialog.open) {
-      dialog.close();
+      closeDetailDialog();
     }
   });
 
@@ -564,9 +839,33 @@ export function setupUIEventListeners() {
     const el = $(selector);
     if (el) {
       el.addEventListener("click", (event) => {
-        const action = event.target.closest("[data-action]")?.dataset.action;
+        const target = event.target.closest("[data-action]");
+        const action = target?.dataset.action;
         if (action === "directions") showDirections();
         if (action === "share") shareBooth();
+
+        if (
+          action === "gallery" ||
+          action === "gallery-prev" ||
+          action === "gallery-next"
+        ) {
+          const gallery = target.closest(".detail-gallery");
+          if (!gallery) return;
+
+          const current = Number(gallery.dataset.index || 0);
+
+          if (action === "gallery") {
+            setGalleryIndex(gallery, Number(target.dataset.index));
+          } else if (action === "gallery-prev") {
+            setGalleryIndex(gallery, current - 1);
+          } else {
+            setGalleryIndex(gallery, current + 1);
+          }
+        }
+        if (action === "gallery-zoom") {
+          const gallery = target.closest(".detail-gallery");
+          if (gallery) openLightbox(gallery);
+        }
       });
     }
   });
@@ -604,5 +903,156 @@ export function setupUIEventListeners() {
   window.addEventListener("hashchange", () => {
     const id = location.hash.slice(1).toUpperCase();
     if (boothById.has(id)) selectBooth(id, false, true);
+  });
+}
+export function initDetailDrag() {
+  const dialog = $("#detail-dialog");
+  if (!dialog) return;
+
+  const handle = dialog.querySelector(".detail-drag-handle");
+  const heading = dialog.querySelector(".dialog-heading");
+
+  if (!handle || !heading) return;
+
+  let dragging = false;
+  let startY = 0;
+  let currentY = 0;
+  let startTime = 0;
+
+  const CLOSE_DISTANCE = 120;
+  const CLOSE_VELOCITY = 0.8;
+  const EXPAND_DISTANCE = 80;
+
+  function startDrag(event) {
+    if (!dialog.open || desktopQuery.matches) return;
+
+    // ไม่ให้ปุ่ม Close เริ่ม drag
+    if (event.target.closest("#close-detail")) {
+      return;
+    }
+
+    // รับเฉพาะ mouse ปุ่มซ้าย
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    dragging = true;
+    startY = event.clientY;
+    currentY = 0;
+    startTime = performance.now();
+
+    dialog.classList.add("dragging");
+
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    event.preventDefault();
+  }
+
+  function moveDrag(event) {
+    if (!dragging) return;
+
+    currentY = event.clientY - startY;
+
+    /*
+     * ลากลง
+     */
+    if (currentY > 0) {
+      // ลากลง → เลื่อน sheet ลงเพื่อเตรียมปิด
+      dialog.style.transform = `translateY(${currentY}px)`;
+    } else {
+      // ลากขึ้น → ไม่ยก sheet ลอยขึ้น
+      // ปล่อยให้มันอยู่ติดด้านล่าง
+      dialog.style.transform = "";
+    }
+
+    event.preventDefault();
+  }
+
+  function endDrag(event) {
+    if (!dragging) return;
+
+    dragging = false;
+
+    const elapsed = Math.max(performance.now() - startTime, 1);
+
+    const distance = currentY;
+    const velocity = Math.abs(distance) / elapsed;
+
+    dialog.classList.remove("dragging");
+
+    /*
+     * ==========================
+     * ลากลง → ปิด
+     * ==========================
+     */
+    if (
+      distance > CLOSE_DISTANCE ||
+      (distance > 40 && velocity > CLOSE_VELOCITY)
+    ) {
+      dialog.style.transform = "";
+      closeDetailDialog();
+      return;
+    }
+
+    /*
+     * ==========================
+     * ลากขึ้น → Expand
+     * ==========================
+     */
+    if (distance < -EXPAND_DISTANCE) {
+      dialog.classList.add("expanded");
+      dialog.style.transform = "";
+
+      return;
+    }
+
+    /*
+     * ==========================
+     * ลากนิดเดียว → กลับ
+     * ==========================
+     */
+    dialog.style.transform = "";
+
+    event.preventDefault();
+  }
+
+  /*
+   * ==========================
+   * Handle
+   * ==========================
+   */
+  handle.addEventListener("pointerdown", startDrag);
+
+  handle.addEventListener("pointermove", moveDrag);
+
+  handle.addEventListener("pointerup", endDrag);
+
+  handle.addEventListener("pointercancel", endDrag);
+
+  /*
+   * ==========================
+   * Header
+   * ==========================
+   */
+  heading.addEventListener("pointerdown", startDrag);
+
+  heading.addEventListener("pointermove", moveDrag);
+
+  heading.addEventListener("pointerup", endDrag);
+
+  heading.addEventListener("pointercancel", endDrag);
+}
+export function initDetailBackdrop() {
+  const dialog = $("#detail-dialog");
+  if (!dialog) return;
+
+  let openedAt = 0;
+  new MutationObserver(() => {
+    if (dialog.open) openedAt = performance.now();
+  }).observe(dialog, { attributes: true, attributeFilter: ["open"] });
+
+  dialog.addEventListener("click", (event) => {
+    if (performance.now() - openedAt < 400) return; // ignore ghost click
+    if (event.target === dialog) closeDetailDialog();
   });
 }

@@ -2,7 +2,9 @@
 
 require __DIR__ . '/lib/auth.php';
 require_admin();
+require_once __DIR__ . '/lib/stats.php';
 
+$initialStats = get_visitor_stats();
 ?>
 <!doctype html>
 <html lang="en">
@@ -28,6 +30,24 @@ require_admin();
             </a>
 
             <div class="manager-actions">
+                <div class="manager-stats" id="manager-stats" aria-label="Visitor statistics" title="Click to refresh statistics">
+                    <div class="stat-badge stat-online" title="Real-time online visitors">
+                        <span class="stat-pulse" aria-hidden="true"></span>
+                        <span class="stat-label" data-manager-i18n="visitorsOnline">Online</span>
+                        <span class="stat-value" id="stat-online-val"><?= number_format($initialStats['online']) ?></span>
+                    </div>
+                    <div class="stat-badge stat-total" title="Total website visitors">
+                        <span class="stat-icon" aria-hidden="true">👥</span>
+                        <span class="stat-label" data-manager-i18n="visitorsTotal">Total</span>
+                        <span class="stat-value" id="stat-total-val"><?= number_format($initialStats['totalViews']) ?></span>
+                    </div>
+                    <div class="stat-badge stat-peak" title="Peak concurrent visitors">
+                        <span class="stat-icon" aria-hidden="true">🏆</span>
+                        <span class="stat-label" data-manager-i18n="visitorsPeak">Peak</span>
+                        <span class="stat-value" id="stat-peak-val"><?= number_format($initialStats['peak']) ?></span>
+                    </div>
+                </div>
+
                 <div class="lang-switcher" role="group" aria-label="Language selector">
                     <button type="button" class="lang-btn" data-lang="lo" aria-label="ພາສາລາວ">ລາວ</button>
                     <button type="button" class="lang-btn" data-lang="en" aria-label="English">English</button>
@@ -71,6 +91,7 @@ require_admin();
                     <div class="manager-panel-heading">
                         <h2 id="layers-title" data-manager-i18n="layers">Layers</h2>
                         <p data-manager-i18n="layersHint">Top items appear in front.</p>
+
                     </div>
                     <div id="layers-list"></div>
                 </section>
@@ -96,6 +117,8 @@ require_admin();
                     </section>
 
                     <div class="manager-preview-wrap">
+                        <button class="map-side-toggle map-side-toggle--left" id="toggle-sidebar" type="button" aria-pressed="false" title="Toggle Layers panel">&#8249;</button>
+                        <button class="map-side-toggle map-side-toggle--right" id="toggle-inspector" type="button" aria-pressed="false" title="Toggle Properties panel">&#8250;</button>
                         <svg
                             id="manager-preview"
                             preserveAspectRatio="xMidYMid meet"

@@ -1,6 +1,17 @@
 const savedLang = localStorage.getItem("eventmap_lang");
 
 export let featuredShops = {};
+export let boothImages = {};
+
+export function getBoothImages(boothId) {
+  return (
+    boothImages[
+      String(boothId || "")
+        .trim()
+        .toUpperCase()
+    ] || []
+  );
+}
 export function setFeaturedShops(shops) {
   featuredShops = shops;
 }

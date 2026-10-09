@@ -4,7 +4,7 @@ import { setFeaturedShops, setEventInfo, setEvent } from "./state.js";
 
 import { setMapLayout } from "./map-layout.js";
 
-const STORAGE_KEY = "eventmap_api_payload_v5";
+const STORAGE_KEY = "eventmap_api_payload_v8";
 
 function applyApiPayload(payload) {
   if (payload?.error) {
@@ -133,4 +133,96 @@ export async function loadMapLayoutFromGoogleSheet() {
   }
 
   return setMapLayout(payload.mapLayout);
+}
+
+/**
+ * Heartbeat tracking for active visitors on the public EventMap pages.
+/**
+ * Heartbeat tracking for active visitors on the public EventMap pages.
+ * Runs silently in the background without affecting UI or performance.
+ */
+export function trackVisitorSession() {
+  try {
+    const STORAGE_KEY_SID = "eventmap_visitor_sid";
+    const cookieMatch = document.cookie.match(
+      /(?:^|;\s*)eventmap_visitor_sid=([^;]+)/,
+    );
+    let sid = cookieMatch
+      ? decodeURIComponent(cookieMatch[1])
+      : sessionStorage.getItem(STORAGE_KEY_SID);
+    if (!sid) {
+      sid =
+        Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      sessionStorage.setItem(STORAGE_KEY_SID, sid);
+    } else {
+      sessionStorage.setItem(STORAGE_KEY_SID, sid);
+    }
+
+    const sendPing = (action = "ping") => {
+      const localUrl = `./api/stats.php?action=${action}&sid=${encodeURIComponent(sid)}`;
+      if (action === "leave" && typeof navigator.sendBeacon === "function") {
+        navigator.sendBeacon(localUrl);
+      } else {
+        fetch(localUrl, { keepalive: true, cache: "no-store" }).catch(() => {
+          // Fallback to Google Sheet API if local fails
+          const remoteUrl = `${GOOGLE_SHEET_API}?action=${action}&sid=${encodeURIComponent(sid)}`;
+          fetch(remoteUrl, { keepalive: true, cache: "no-store" }).catch(
+            () => {},
+          );
+        });
+      }
+    };
+
+    // Initial ping
+    sendPing("ping");
+
+    // Heartbeat every 30 seconds while tab is active
+    setInterval(() => {
+      if (document.visibilityState === "visible") {
+        sendPing("ping");
+      }
+    }, 30000);
+
+    // Refresh ping immediately when user returns to this tab
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        sendPing("ping");
+      }
+    });
+
+    // Notify leave when closing page
+    window.addEventListener("pagehide", () => sendPing("leave"));
+  } catch (error) {
+    console.debug("Visitor tracking omitted:", error);
+  }
+}
+
+/**
+ * Fetch visitor statistics (Online, Total, Peak) for the Manager page.
+ * Prioritizes the fast local cPanel PHP endpoint (sub-millisecond), falling back to Google Apps Script.
+ */
+export async function fetchVisitorStats() {
+  try {
+    const response = await fetch("./api/stats.php?action=getStats", {
+      cache: "no-store",
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.ok) return data;
+    }
+  } catch (localError) {
+    console.debug(
+      "Local stats endpoint error, falling back to Google Apps Script:",
+      localError,
+    );
+  }
+
+  // Fallback to Google Sheet API
+  const response = await fetch(`${GOOGLE_SHEET_API}?action=getStats`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return await response.json();
 }
